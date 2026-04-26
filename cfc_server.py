@@ -19,6 +19,7 @@ All such prefixed paths are normalized before routing.
 
 import http.server
 import json
+import sys
 import time
 import base64
 import urllib.request
@@ -137,7 +138,8 @@ def _arc_split_view_html() -> str:
 
 class CFCHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        pass
+        sys.stderr.write(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}\n")
+        sys.stderr.flush()
 
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode()
@@ -204,12 +206,18 @@ class CFCHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(resp_body)
-        except Exception:
+        except Exception as e:
+            import traceback
+            err_text = f"{type(e).__name__}: {e}"
+            sys.stderr.write(f"[PROXY-ERROR] {err_text}\n{traceback.format_exc()}\n")
+            sys.stderr.flush()
+            body = json.dumps({"error": "bad_gateway", "exception": err_text}).encode()
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(b'{"error":"bad gateway"}')
+            self.wfile.write(body)
 
     def _route(self):
         # Strip query string for routing; keep raw path for proxy forwarding

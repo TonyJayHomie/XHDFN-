@@ -222,26 +222,20 @@ FEATURES_PAYLOAD = json.loads(r"""{"features":{"cascade_nebula":{"name":"sbNkpmI
 
 
 def get_local_auth(path: str):
-    """Returns exact cocodem response shapes. Returns None for routes cocodem 404s.
-    Verified char-code-by-char-code from live cfc.aroic.workers.dev 2026-04-27.
-    """
-    # /api/bootstrap/features/claude_in_chrome - full Statsig payload
-    if "/api/bootstrap/features/claude_in_chrome" in path:
-        return FEATURES_PAYLOAD
-    # /api/oauth/profile - thin shape only
-    if "/api/oauth/profile" in path:
-        return THIN_PROFILE
-    # /api/oauth/account/settings - enabled_mcp_tools map only
-    if "/api/oauth/account/settings" in path:
-        return {"enabled_mcp_tools": {}}
-    # /api/oauth/chat_conversations - bare array
-    if "/api/oauth/chat_conversations" in path:
-        return []
-    # /api/web/domain_info/browser_extension
-    if "/domain_info" in path:
-        return {"category": "unknown"}
-    # Everything else cocodem 404s — return None so handler sends 404
-    return None
+    """Match old working worker authResponse() exactly."""
+    if "/oauth/token" in path:         return build_local_token()
+    if "/oauth/profile" in path or "/oauth/account" in path: return LOCAL_PROFILE
+    if "/bootstrap" in path:           return LOCAL_BOOTSTRAP
+    if "/oauth/organizations" in path or "/organizations" in path: return LOCAL_ORGS
+    if "/chat_conversations" in path:  return LOCAL_CONV
+    if "/domain_info" in path:         return {"domain": "local", "allowed": True}
+    if "/url_hash_check" in path:      return {"allowed": True}
+    if "/licenses/" in path:           return {"valid": True, "license": "local", "tier": "pro", "expires": "2099-12-31"}
+    if "/mcp/v2/" in path:             return {"servers": [], "tools": [], "enabled": False}
+    if "/usage" in path:               return {"usage": {}, "limit": None}
+    if "/entitlements" in path:        return {"entitlements": []}
+    if "/flags" in path or "/features/" in path: return {}
+    return {}
 
 
 # ─── Cloudflare Worker ────────────────────────────────────────────────────────
@@ -256,24 +250,54 @@ const LOCAL_CFC     = """ + f'"{local_cfc}";' + r"""
 const USER_UUID = "ac507011-00b5-56c4-b3ec-ad820dbafbc1";
 const ORG_UUID  = "1b61ee4a-d0ce-50b5-8b67-7eec034d3d08";
 
-// Exact /api/oauth/profile shape from cfc.aroic.workers.dev
-const THIN_PROFILE = {
-  account: {
-    uuid:           USER_UUID,
-    email:          "free@claudeagent.ai",
-    username:       "Free",
-    has_claude_max: false,
-    has_claude_pro: false,
-  },
-  organization: {
-    uuid:              ORG_UUID,
-    organization_type: "",
-  },
+function b64url(obj) {
+  const text = JSON.stringify(obj);
+  let bin = "";
+  for (let i = 0; i < text.length; i++) bin += String.fromCharCode(text.charCodeAt(i));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function localJwt() {
+  return `${b64url({ alg: "none", typ: "JWT" })}.${b64url({
+    iss: "cfc", sub: USER_UUID, exp: 9999999999, iat: 1700000000,
+  })}.local`;
+}
+function tokenResponse() {
+  const tok = localJwt();
+  return { access_token: tok, token_type: "bearer", expires_in: 315360000,
+           refresh_token: tok, scope: "user:profile user:inference user:chat" };
+}
+const ACCOUNT = {
+  uuid: USER_UUID, id: USER_UUID,
+  email_address: "free@claudeagent.ai", email: "free@claudeagent.ai",
+  full_name: "Local User", name: "Local User", display_name: "Local User",
+  has_password: true, has_completed_onboarding: true,
+  preferred_language: "en-US", has_claude_pro: true,
+  settings: { theme: "system", language: "en-US" },
+};
+const ORG = {
+  uuid: ORG_UUID, id: ORG_UUID, name: "Local", role: "admin",
+  organization_type: "personal", billing_type: "self_serve",
+  capabilities: ["chat", "claude_pro_plan", "api", "computer_use", "claude_for_chrome"],
+  rate_limit_tier: "default_claude_pro", settings: {},
+};
+const PROFILE = {
+  ...ACCOUNT,
+  account: ACCOUNT, organization: ORG, organizations: [ORG],
+  memberships: [{ organization: ORG, role: "admin", joined_at: "2024-01-01T00:00:00Z" }],
+  active_organization_uuid: ORG_UUID,
+};
+const BOOTSTRAP = {
+  ...PROFILE,
+  account_uuid: USER_UUID,
+  statsig: { user: { userID: USER_UUID, custom: { organization_uuid: ORG_UUID } },
+             values: { feature_gates: {}, dynamic_configs: {}, layer_configs: {} } },
+  flags: {}, features: [], active_flags: {},
+  active_subscription: { plan: "claude_pro", status: "active", type: "claude_pro",
+    billing_period: "monthly", current_period_start: "2024-01-01T00:00:00Z",
+    current_period_end: "2099-12-31T23:59:59Z" },
+  chat_enabled: true,
 };
 
-// Full /api/bootstrap/features/claude_in_chrome payload
-// Verbatim from cfc.aroic.workers.dev 2026-04-27
-const FEATURES = JSON.parse(`{"features":{"cascade_nebula":{"name":"sbNkpmIlzvqip36FWrJ9Fl6lm2Z8flwCCy7OC1Cpfo0=","value":false,"rule_id":"625BgxNmg4MPwdoCZZNiXX","id_type":"organizationUUID"},"chrome_ext_allow_api_key":{"name":"EvnFHCM1+/6kimNDpZOKDuoNpLYUDRnwy2XnEOfQU14=","value":true,"rule_id":"default","id_type":"userID"},"chrome_ext_domain_transition_prompts":{"name":"1ZaytS2fGWsVRtPsatpAmmC0KANyP0nhWCB4vdyckUU=","value":true,"rule_id":"6jBomsSGrC9EZFsvuUpRCY","id_type":"userID"},"chrome_ext_edit_system_prompt":{"name":"UntFKKxQCVD5z77d1NjunhDOVeI052MnQb36bzbFr+w=","value":true,"rule_id":"default","id_type":"userID"},"chrome_ext_planning_mode_enabled":{"name":"WPRnLD6sIUNvHgEessQOlsh8uvNujrUOplwvekUsVJA=","value":true,"rule_id":"default","id_type":"userID"},"chrome_ext_trace_headers":{"name":"E1wf9SY0jYloNfovYpkIkiBWhBlKg1IvV9clQCIlYp8=","value":true,"rule_id":"1Up8lxcKNcuLWMXdEeBtu5","id_type":"userID"},"chrome_extension_show_user_email":{"name":"9MHbS7+Fvqr5B4KG+kwUQGUG3RkrbVGdXyR7m0xGMc4=","value":false,"rule_id":"default","id_type":"userID"},"chrome_scheduled_tasks":{"name":"BOVPSV2Wap4FscSohoKyV8RfvKe9FY1LN0CaPKnAshU=","value":true,"rule_id":"default","id_type":"anonymousID"},"crochet_browse_shortcuts":{"name":"9LhgC7xWxrflxHdsQuhX030OfyhhUJmLAwOTJnJrIlI=","value":true,"rule_id":"default","id_type":"anonymousID"},"crochet_can_see_browser_indicator":{"name":"vZEXr8BqP/HH+99iQ05fO5hH/aeiK9rW+HPmOGjgx8s=","value":false,"rule_id":"default","id_type":"anonymousID"},"crochet_can_skip_permissions":{"name":"+Fp9kNW+YdIcTvYNc/VDjw4ifdBlskzsM3gA9IteUz4=","value":true,"rule_id":"default","id_type":"anonymousID"},"crochet_can_submit_feedback":{"name":"JX4Sf/o2Tv3OvK22z74fwAD+HMH2HM52qYAuOWTCDFQ=","value":false,"rule_id":"default","id_type":"anonymousID"},"crochet_default_debug_mode":{"name":"mF0y5y2h+qgYYbXzuUqqplUVv4Gl31Gqddl3dkDaugY=","value":true,"rule_id":"default","id_type":"anonymousID"},"crochet_upsell_ant_build":{"name":"HEerRrPgPotaAtzzvnobpf/otq3lgpIYB1B9K4fdewI=","value":false,"rule_id":"default","id_type":"anonymousID"},"chrome_ext_mcp_integration":{"name":"EcB7Ijg2cagIoXozJ++zrQQLdPdb2lzo40ek09tiMoo=","value":true,"rule_id":"3iuANMah9wC82WGWFI6k6o:0.00:1","id_type":"userID"},"chrome_ext_show_model_selector":{"name":"cI9/C8tsabVkacN9bAffB84aFN8UmRnCzmkBouX14G4=","value":true,"rule_id":"6yRxKTJ3tjrAtRnJYx337Q","id_type":"organizationUUID"},"chrome_ext_record_workflow":{"name":"S2/qZc28dH5OcbxqkXGnBTlYBHj2DjWfmc3Ra0jnl9Y=","value":true,"rule_id":"4IJdmr9aWla5BYYNZxM3vY","id_type":"userID"},"chrome_ext_sessions_planning_mode":{"name":"Kbt8l/2jNsGnW2jBd+ON7W4cQgDotp/ucvzf81bIPQQ=","value":true,"rule_id":"default","id_type":"organizationUUID"},"chrome_ext_eligibility":{"name":"2yWfCMptQ+iatEqE0oRsXUfZRhkJ148qQpW6rVq7aKA=","value":true,"rule_id":"default","id_type":"userID"},"chrome_ext_default_sessions":{"name":"fFP5x20JlDMo7WbQXviWFGRek9wPAirJkPqbKaKnURI=","value":true,"rule_id":"default","id_type":"organizationUUID"},"chrome_ext_downloads":{"name":"louFYj9eRkSLKXzP86YAA/bWZWtF97Wjfn41SJTB7Zs=","value":true,"rule_id":"default","id_type":"userID"},"chrome_ext_version_info":{"name":"3HweMVy+oz0r/Tr8plF8OVILynbC7ffPqRCkroUCfMg=","value":{"latest_version":"1.0.12","min_supported_version":"1.0.11"},"rule_id":"default","group":"default","is_device_based":false,"passed":false,"id_type":"anonymousID"},"chrome_ext_announcement":{"name":"TuxZfoyn/rrDHaVxFaMBK0t68mD5n8z4+0UnW28rU9I=","value":{"id":"launch-20260205","enabled":true,"text":"Opus 4.6 is here, a powerful model for complex and professional work."},"rule_id":"3NR6OXjvkp7GGPbBOp6plP-3NR6OVEsS6YcnpDGdhaM2N","group":"3NR6OXjvkp7GGPbBOp6plP-3NR6OVEsS6YcnpDGdhaM2N","is_device_based":false,"passed":true,"id_type":"userID"},"chrome_ext_models":{"name":"xzwNEifAjpp/eo3Ix+UQmALRHIH5988dZmR86v2DJzM=","value":{"default":"claude-haiku-4-5-20251001","default_model_override_id":"launch-2025-11-24-1","options":[{"model":"claude-opus-4-6","name":"Opus 4.6","description":"Most capable for complex work"},{"model":"claude-haiku-4-5-20251001","name":"Haiku 4.5","description":"Fastest for quick answers"},{"model":"claude-sonnet-4-5-20250929","name":"Sonnet 4.5","description":"Smartest for everyday tasks"}],"modelFallbacks":{"claude-sonnet-4-5-20250929":{"currentModelName":"Sonnet 4.5","fallbackModelName":"claude-sonnet-4-20250514","fallbackDisplayName":"Sonnet 4","learnMoreUrl":"https://support.claude.com/en/articles/12436559-understanding-sonnet-4-5-s-safety-filters"},"claude-haiku-4-5-20251001":{"currentModelName":"Haiku 4.5","fallbackModelName":"claude-sonnet-4-20250514","fallbackDisplayName":"Sonnet 4","learnMoreUrl":"https://support.claude.com/en/articles/12436559-understanding-sonnet-4-5-s-safety-filters"},"claude-opus-4-6":{"currentModelName":"Opus 4.6","fallbackModelName":"claude-sonnet-4-20250514","fallbackDisplayName":"Sonnet 4","learnMoreUrl":"https://support.claude.com/en/articles/12436559-understanding-sonnet-4-5-s-safety-filters"}}},"rule_id":"default","group":"default","is_device_based":false,"passed":false,"id_type":"userID"},"chrome_ext_permission_modes":{"name":"l9hcQKlN43GtdQ/+wlz/wgURPlMpLMg1v6aNJ9x1fu4=","value":{"default":"ask","options":["ask","skip_all_permission_checks"]},"rule_id":"default","group":"default","is_device_based":false,"passed":false,"id_type":"userID"},"crochet_bad_hostnames":{"name":"X4QpIBRXGTVoDKy8vzEJ6krt4lzm6/mu3COvELU5TYA=","value":{"hostnames":["mcp.slack.com","mcp-outline-production"]},"rule_id":"default","group":"default","is_device_based":false,"passed":false,"id_type":"organizationUUID"},"extension_landing_page_url":{"name":"o2/wl+trALDE7BVg0UQDr64IlZpb2IHpnQcaXYwCdY4=","value":{"relative_url":"/chrome/installed"},"rule_id":"6oiUzR7daySrf64oyKvn9x","group":"6oiUzR7daySrf64oyKvn9x","is_device_based":false,"passed":true,"id_type":"userID"},"crochet_domain_skills":{"name":"LD/mmOvlebE3H4F2aWA62H0OBxW4DY4DnHvP5yjwj9Q=","value":{"mail.google.com":"crochet_gmail","docs.google.com":"crochet_google_docs","calendar.google.com":"crochet_google_calendar","app.slack.com":"crochet_slack","linkedin.com":"crochet_linkedin","github.com":"crochet_github"},"rule_id":"default","group":"default","is_device_based":false,"passed":false,"id_type":"anonymousID"}}}`);
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -317,9 +341,7 @@ function escAttr(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
-// uiNodes: same schema as cocodem's /api/options uiNodes, but pointing to THIS worker
 function optionsPayload(origin) {
-  const workerBase = origin + "/";
   return {
     mode: "",
     anthropicBaseUrl: "",
@@ -344,31 +366,32 @@ function optionsPayload(origin) {
       "browser-intake-us5-datadoghq.com",
     ],
     modelAlias: {},
-    uiNodes: [
-      {
-        "selector": {"type":"div","props":{"className":null,"children":[{"type":"label","props":{"htmlFor":"apiKey"}}]}},
-        "append":   {"type":"p","props":{"className":"mt-2 font-bold text-text-300","children":[{"type":"a","props":{"href":workerBase,"target":"_blank","className":"inline-link","style":{},"children":["Base URL and Model Alias Configuration \u2197"]}}]}}
-      },
-      {
-        "selector": {"type":"ul","props":{"className":"flex gap-1 md:flex-col mb-0","children":[{"type":"li","props":{}}]}},
-        "append":   {"type":"li","props":{"children":[{"type":"a","props":{"href":workerBase+"#api","target":"_blank","className":"block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100","children":"\uD83D\uDD11 API KEY  \u2197"}}]}}
-      },
-      {
-        "selector": {"type":"div","props":{"role":"mean","data-radix-menu-content":"","data-side":"bottom","children":[{"type":"div","props":{"role":"menuitem"}}]}},
-        "append":   {"type":"div","props":{"children":"AAAA"}}
-      }
-    ],
+    ui: {},
+    uiNodes: [],
+    cfcBase: LOCAL_CFC,
   };
 }
 
 function routeAuth(raw, url) {
-  // Only routes cocodem actually answers — everything else 404s
-  if (raw.includes("/api/bootstrap/features/claude_in_chrome")) return json(FEATURES);
-  if (raw.includes("/api/oauth/profile"))                        return json(THIN_PROFILE);
-  if (raw.includes("/api/oauth/account/settings"))               return json({enabled_mcp_tools: {}});
-  if (raw.includes("/api/oauth/chat_conversations"))             return jsonArr([]);
-  if (raw.includes("domain_info"))                               return json({category: "unknown"});
-  return null;
+  const isAuth = raw.includes("/oauth/") || raw.includes("/bootstrap") ||
+    raw.includes("/domain_info") || raw.includes("/url_hash_check") ||
+    raw.includes("/chat_conversations") || raw.includes("/organizations") ||
+    raw.includes("/licenses/") || raw.includes("/mcp/v2/") || raw.includes("/usage") ||
+    raw.includes("/entitlements") || raw.includes("/flags") || raw.includes("/features/");
+  if (!isAuth) return null;
+  if (raw.includes("/oauth/token"))                                     return json(tokenResponse());
+  if (raw.includes("/oauth/profile") || raw.includes("/oauth/account")) return json(PROFILE);
+  if (raw.includes("/bootstrap"))                                       return json(BOOTSTRAP);
+  if (raw.includes("/oauth/organizations") || raw.includes("/organizations")) return json([ORG]);
+  if (raw.includes("/chat_conversations")) return json({conversations:[],limit:0,has_more:false,cursor:null});
+  if (raw.includes("/domain_info"))        return json({domain:"local",allowed:true});
+  if (raw.includes("/url_hash_check"))     return json({allowed:true});
+  if (raw.includes("/licenses/"))          return json({valid:true,license:"local",tier:"pro",expires:"2099-12-31"});
+  if (raw.includes("/mcp/v2/"))            return json({servers:[],tools:[],enabled:false});
+  if (raw.includes("/usage"))              return json({usage:{},limit:null});
+  if (raw.includes("/entitlements"))       return json({entitlements:[]});
+  if (raw.includes("/flags") || raw.includes("/features/")) return json({});
+  return json({});
 }
 
 function authGate(url) {
@@ -1881,6 +1904,7 @@ LOCAL_PROFILE = {
     **LOCAL_ACCOUNT,
     "account": LOCAL_ACCOUNT,
     "organization": LOCAL_ORG,
+    "organizations": [LOCAL_ORG],
     "memberships": [{"organization": LOCAL_ORG, "role": "admin", "joined_at": "2024-01-01T00:00:00Z"}],
     "active_organization_uuid": _UUID_O,
 }

@@ -2235,7 +2235,7 @@ window.testBackend=async function(i){{
   el.textContent="Testing...";el.style.color="#6b6651";
   try{{
     const h=b.key?{{Authorization:"Bearer "+b.key}}:{{}};
-    const r=await fetch(b.url.replace(/\/v1\/?$/,"")+"/v1/models",{{headers:h}});
+    const r=await fetch(b.url.replace(/\\/v1\\/?$/,"")+"/v1/models",{{headers:h}});
     if(r.ok){{const d=await r.json();el.textContent="\u2713 "+(d.data||[]).map(m=>m.id).slice(0,4).join(", ");el.style.color="#2d6a4f";}}
     else{{el.textContent="\u2717 HTTP "+r.status;el.style.color="#b04a3d"}}
   }}catch(e){{el.textContent="\u2717 "+e.message;el.style.color="#b04a3d"}}

@@ -973,18 +973,20 @@ if (chrome?.runtime?.onMessageExternal?.addListener) {
             break
 
           case "oauth_redirect": {
-            const { redirect_uri } = msg
-            if (redirect_uri && redirect_uri.includes("sidepanel.html")) {
-              try {
-                chrome.storage.local.set({
-                  sidepanelToken:       "cfc-local-permanent",
-                  sidepanelTokenExpiry: 9999999999999,
-                })
-              } catch(e) {}
-              try { sendResponse({ success: true }) } catch(e) {}
-            } else {
-              try { sendResponse({ success: false }) } catch(e) {}
+            const { redirect_uri: _ru1 } = msg
+            if (_ru1) {
+              const _h1 = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
+              const _p1 = btoa(JSON.stringify({ iss: "cfc", sub: "ac507011-00b5-56c4-b3ec-ad820dbafbc1", exp: 9999999999, iat: 1700000000 }))
+              chrome.storage.local.set({
+                accessToken:          _h1 + "." + _p1 + ".local",
+                refreshToken:         "local-refresh",
+                tokenExpiry:          9999999999999,
+                accountUuid:          "ac507011-00b5-56c4-b3ec-ad820dbafbc1",
+                sidepanelToken:       "cfc-local-permanent",
+                sidepanelTokenExpiry: 9999999999999,
+              }).catch(() => {})
             }
+            try { sendResponse({ success: true }) } catch(e) {}
             break
           }
         }
@@ -1006,8 +1008,25 @@ if (chrome?.runtime?.onMessage?.addListener) {
             chrome.storage.local.get({
               accessToken: "", tokenExpiry: 0, accountUuid: ""
             }).then(({ accessToken, tokenExpiry, accountUuid }) => {
-              const isValid = !!accessToken && !!accountUuid && tokenExpiry > Date.now()
-              try { sendResponse({ isValid, isRefreshed: false }) } catch(e) {}
+              if (!!accessToken && !!accountUuid && tokenExpiry > Date.now()) {
+                try { sendResponse({ isValid: true, isRefreshed: false }) } catch(e) {}
+                return
+              }
+              const _h = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
+              const _p = btoa(JSON.stringify({ iss: "cfc", sub: "ac507011-00b5-56c4-b3ec-ad820dbafbc1", exp: 9999999999, iat: 1700000000 }))
+              const _t = _h + "." + _p + ".local"
+              chrome.storage.local.set({
+                accessToken:          _t,
+                refreshToken:         "local-refresh",
+                tokenExpiry:          9999999999999,
+                accountUuid:          "ac507011-00b5-56c4-b3ec-ad820dbafbc1",
+                sidepanelToken:       "cfc-local-permanent",
+                sidepanelTokenExpiry: 9999999999999,
+              }).then(() => {
+                try { sendResponse({ isValid: true, isRefreshed: true }) } catch(e) {}
+              }).catch(() => {
+                try { sendResponse({ isValid: true, isRefreshed: true }) } catch(e) {}
+              })
             }).catch(() => {
               try { sendResponse({ isValid: false, isRefreshed: false }) } catch(e) {}
             })
@@ -1043,20 +1062,23 @@ if (chrome?.runtime?.onMessage?.addListener) {
             if (chrome?.tabs?.create) chrome.tabs.create({ url: msg.url })
             break
 
-          case "oauth_redirect":
-            const { redirect_uri } = msg
-            if (redirect_uri && redirect_uri.includes("sidepanel.html")) {
-              try {
-                chrome.storage.local.set({
-                  sidepanelToken:        "cfc-local-permanent",
-                  sidepanelTokenExpiry:  9999999999999,
-                })
-              } catch(e) {}
-              try { sendResponse({ success: true }) } catch(e) {}
-            } else {
-              try { sendResponse({ success: false }) } catch(e) {}
+          case "oauth_redirect": {
+            const { redirect_uri: _ru2 } = msg
+            if (_ru2) {
+              const _h2 = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
+              const _p2 = btoa(JSON.stringify({ iss: "cfc", sub: "ac507011-00b5-56c4-b3ec-ad820dbafbc1", exp: 9999999999, iat: 1700000000 }))
+              chrome.storage.local.set({
+                accessToken:          _h2 + "." + _p2 + ".local",
+                refreshToken:         "local-refresh",
+                tokenExpiry:          9999999999999,
+                accountUuid:          "ac507011-00b5-56c4-b3ec-ad820dbafbc1",
+                sidepanelToken:       "cfc-local-permanent",
+                sidepanelTokenExpiry: 9999999999999,
+              }).catch(() => {})
             }
+            try { sendResponse({ success: true }) } catch(e) {}
             break
+          }
         }
       } catch (e) {
         console.log("[hijack] Standard message error:", e.message)

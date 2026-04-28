@@ -196,7 +196,7 @@ function buildFeatures() {
 const FEATURES = buildFeatures();
 
 // =========================== local settings page ============================
-function settingsPage() {
+function settingsPage(workerOrigin) {
   return `<!doctype html><html><head>
 <meta charset="utf-8"><title>CFC9 Worker</title>
 <style>body{font:16px system-ui;background:#0a0a0a;color:#eee;margin:0;padding:40px;text-align:center}
@@ -210,7 +210,7 @@ a.btn{display:inline-block;background:#d97757;color:#fff;border:0;padding:12px 2
 <p class="ok">Worker active. Zero phone-home to cocodem/Anthropic.</p>
 <p>API calls route through local Python proxy at<br><code>${LOCAL_CFC}</code></p>
 <a class="btn" href="${LOCAL_CFC}/backend_settings" target="_blank">Backend Settings</a>
-<p class="note">Worker: <code>${location.origin}</code></p>
+<p class="note">Worker: <code>${workerOrigin}</code></p>
 </div></body></html>`;
 }
 
@@ -301,7 +301,7 @@ async function handle(request) {
   if (bare.endsWith("/api/web/url_hash_check/browser_extension"))
     return json({ allowed: true });
 
-  // /api/options -- the critical config payload request.js reads at startup
+  // /api/options -- the critical config payload read.js reads at startup
   if (bare === "/api/options") {
     return json({
       mode: "",
@@ -350,7 +350,7 @@ async function handle(request) {
 
   // Root + landing pages
   if (bare === "/" || bare === "/free-trial" || bare === "/chrome/installed")
-    return text(settingsPage(), 200, "text/html");
+    return text(settingsPage(url.origin), 200, "text/html");
 
   // Discard
   if (bare === "/discard") return noContent();
@@ -365,3 +365,4 @@ export default {
       json({ error: String(e && e.message || e) }, 500));
   },
 };
+

@@ -33,26 +33,6 @@ const EXTENSION_ID  = "fcoeoabgfenejglbffodgkkbkcdhcgfn";
 const ACCOUNT_UUID  = "ac507011-00b5-56c4-b3ec-ad820dbafbc1";
 const ORG_UUID      = "1b61ee4a-d0ce-50b5-8b67-7eec034d3d08";
 
-// Well-formed JWT for the OAuth tokens. Cocodem's request.js does
-// atob(accessToken.split(".")[1]) on the access_token to read claims.
-// stock atob() throws on '-' and '_' (those are base64url, not base64),
-// so the token MUST be encoded with standard btoa. iss="cfc" (not "auth")
-// so clearApiKeyLogin's `payload.iss == "auth"` branch never fires and
-// the token doesn't get cleared.
-const _jwtEnc = (o) => btoa(JSON.stringify(o)).replace(/=+$/, "");
-const JWT_HEADER  = _jwtEnc({alg: "none", typ: "JWT"});
-const JWT_PAYLOAD = _jwtEnc({
-  iss: "cfc",
-  sub: ACCOUNT_UUID,
-  aud: "claude-for-chrome",
-  org: ORG_UUID,
-  iat: 1700000000,
-  exp: 9999999999,
-  scope: "user:profile user:inference user:chat",
-});
-const ACCESS_TOKEN  = `${JWT_HEADER}.${JWT_PAYLOAD}.cfclocalpermanent`;
-const REFRESH_TOKEN = ACCESS_TOKEN;
-
 // =============================================================================
 // Verified-from-live-cocodem payloads (snapshotted via curl on 2026-04-29)
 // =============================================================================
@@ -424,19 +404,16 @@ async function handle(request, env) {
   if (bare.startsWith("/api/bootstrap")) {
     return json({...PROFILE, ...FEATURES_FULL});
   }
-  // OAuth token (both /v1/oauth/token and /oauth/token).
-  // access_token / refresh_token are well-formed JWTs (header.payload.sig)
-  // so any code path that does atob(token.split(".")[1]) succeeds.
+  // OAuth token (both /v1/oauth/token and /oauth/token)
   if (bare.endsWith("/v1/oauth/token") || bare.endsWith("/oauth/token")) {
     return json({
-      "access_token":  ACCESS_TOKEN,
-      "refresh_token": REFRESH_TOKEN,
-      "token_type":    "bearer",
-      "expires_in":    315360000,
-      "expires_at":    9999999999000,
-      "scope":         "user:profile user:inference user:chat",
-      "account":       {"uuid": ACCOUNT_UUID, "email_address": "free@claudeagent.ai"},
-      "organization":  {"uuid": ORG_UUID},
+      "access_token": "cfc-local-permanent.cfc-local-permanent.cfc-local-permanent",
+      "refresh_token": "cfc-local-permanent.cfc-local-permanent.cfc-local-permanent",
+      "token_type": "bearer",
+      "expires_in": 315360000,
+      "expires_at": 9999999999000,
+      "scope": "user:profile user:inference user:chat",
+      "account": {"uuid": ACCOUNT_UUID},
     });
   }
   // OAuth authorize -> own /oauth/redirect (avoid ERR_BLOCKED_BY_CLIENT)

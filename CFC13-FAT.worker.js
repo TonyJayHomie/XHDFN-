@@ -33,6 +33,26 @@ const EXTENSION_ID  = "fcoeoabgfenejglbffodgkkbkcdhcgfn";
 const ACCOUNT_UUID  = "ac507011-00b5-56c4-b3ec-ad820dbafbc1";
 const ORG_UUID      = "1b61ee4a-d0ce-50b5-8b67-7eec034d3d08";
 
+// Well-formed JWT for the OAuth tokens. Cocodem's request.js does
+// atob(accessToken.split(".")[1]) on the access_token to read claims.
+// stock atob() throws on '-' and '_' (those are base64url, not base64),
+// so the token MUST be encoded with standard btoa. iss="cfc" (not "auth")
+// so clearApiKeyLogin's `payload.iss == "auth"` branch never fires and
+// the token doesn't get cleared.
+const _jwtEnc = (o) => btoa(JSON.stringify(o)).replace(/=+$/, "");
+const JWT_HEADER  = _jwtEnc({alg: "none", typ: "JWT"});
+const JWT_PAYLOAD = _jwtEnc({
+  iss: "cfc",
+  sub: ACCOUNT_UUID,
+  aud: "claude-for-chrome",
+  org: ORG_UUID,
+  iat: 1700000000,
+  exp: 9999999999,
+  scope: "user:profile user:inference user:chat",
+});
+const ACCESS_TOKEN  = `${JWT_HEADER}.${JWT_PAYLOAD}.cfclocalpermanent`;
+const REFRESH_TOKEN = ACCESS_TOKEN;
+
 // =============================================================================
 // Verified-from-live-cocodem payloads (snapshotted via curl on 2026-04-29)
 // =============================================================================
@@ -65,10 +85,13 @@ const noContent = () => new Response(null, { status:204, headers:CORS });
 // uiNodes (cocodem JSX-patch shape, verified verbatim, href dynamic)
 // =============================================================================
 function buildUiNodes(workerOrigin) {
-  const tmpl = [{"selector": {"type": "div", "props": {"className": null, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}}, "append": {"type": "p", "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": "__WORKER_ORIGIN__/#api", "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias \u2197"]}]}}}, {"selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}}, "append": {"type": "li", "props": {"children": [{"type": "a", "href": "__WORKER_ORIGIN__/#api", "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "\u2699\ufe0f Backend Settings"}]}}}];
-  // Replace placeholder with actual worker origin so the link resolves.
-  const s = JSON.stringify(tmpl).replace(/__WORKER_ORIGIN__/g, workerOrigin);
-  return JSON.parse(s);
+  // hrefs MUST be chrome-extension-relative so they resolve to
+  //   chrome-extension://<id>/options.html#...
+  // when clicked from inside the sidepanel/options page. Using the worker
+  // origin here makes the links open the worker's status page in a new tab,
+  // which is wrong (you want the extension's own options page).
+  const tmpl = [{"selector": {"type": "div", "props": {"className": null, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}}, "append": {"type": "p", "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": "/options.html#api", "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias \u2197"]}]}}}, {"selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}}, "append": {"type": "li", "props": {"children": [{"type": "a", "href": "/options.html#backend_settings", "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "\u2699\ufe0f Backend Settings"}]}}}];
+  return tmpl;
 }
 
 // =============================================================================
@@ -401,16 +424,19 @@ async function handle(request, env) {
   if (bare.startsWith("/api/bootstrap")) {
     return json({...PROFILE, ...FEATURES_FULL});
   }
-  // OAuth token (both /v1/oauth/token and /oauth/token)
+  // OAuth token (both /v1/oauth/token and /oauth/token).
+  // access_token / refresh_token are well-formed JWTs (header.payload.sig)
+  // so any code path that does atob(token.split(".")[1]) succeeds.
   if (bare.endsWith("/v1/oauth/token") || bare.endsWith("/oauth/token")) {
     return json({
-      "access_token": "cfc-local-permanent.cfc-local-permanent.cfc-local-permanent",
-      "refresh_token": "cfc-local-permanent.cfc-local-permanent.cfc-local-permanent",
-      "token_type": "bearer",
-      "expires_in": 315360000,
-      "expires_at": 9999999999000,
-      "scope": "user:profile user:inference user:chat",
-      "account": {"uuid": ACCOUNT_UUID},
+      "access_token":  ACCESS_TOKEN,
+      "refresh_token": REFRESH_TOKEN,
+      "token_type":    "bearer",
+      "expires_in":    315360000,
+      "expires_at":    9999999999000,
+      "scope":         "user:profile user:inference user:chat",
+      "account":       {"uuid": ACCOUNT_UUID, "email_address": "free@claudeagent.ai"},
+      "organization":  {"uuid": ORG_UUID},
     });
   }
   // OAuth authorize -> own /oauth/redirect (avoid ERR_BLOCKED_BY_CLIENT)

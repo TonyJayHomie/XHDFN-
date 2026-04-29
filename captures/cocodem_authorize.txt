@@ -1,0 +1,35 @@
+HTTP/1.1 200 OK
+Date: Wed, 29 Apr 2026 16:34:04 GMT
+Content-Type: text/html; charset=UTF-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=79Knh%2BHEAhD1QHwld88SsfsZX%2FdUNMrETzEKV67sFZ%2BOPl8bjeGWDlCEIwcu7o5GiINW1YDQazXCDIKBzcsejvMj2sDiaYGQtK3qDlusOeH0o19skWpt5%2B1110n5X1zZlylAoSvOTAc%3D"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Server: cloudflare
+CF-RAY: 9f3fb6495943ac54-YYZ
+alt-svc: h3=":443"; ma=86400
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Agent: Claude for Chrome (Research Preview) Powered by Sonnet 4.5</title>
+  <meta name="description" content="No subscription or waitlist required: This official, unlocked release offers immediate, unlimited usage via an API Key. It is compatible with third-party Anthropic-compatible APIs (including those compatible with Claude Code).">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="icon" href="icon.png" />
+  <script type="module" crossorigin src="/assets/index-Yw4jsJJE.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BrxArXbd.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-W39YESVQVC"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-W39YESVQVC');
+  </script>
+</body>
+</html>

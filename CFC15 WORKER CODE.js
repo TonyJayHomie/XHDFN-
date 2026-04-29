@@ -64,11 +64,9 @@ const noContent = () => new Response(null, { status:204, headers:CORS });
 // =============================================================================
 // uiNodes (cocodem JSX-patch shape, verified verbatim, href dynamic)
 // =============================================================================
-function buildUiNodes(workerOrigin) {
-  const tmpl = [{"selector": {"type": "div", "props": {"className": null, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}}, "append": {"type": "p", "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": "__WORKER_ORIGIN__/#api", "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias \u2197"]}]}}}, {"selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}}, "append": {"type": "li", "props": {"children": [{"type": "a", "href": "__WORKER_ORIGIN__/#api", "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "\u2699\ufe0f Backend Settings"}]}}}];
-  // Replace placeholder with actual worker origin so the link resolves.
-  const s = JSON.stringify(tmpl).replace(/__WORKER_ORIGIN__/g, workerOrigin);
-  return JSON.parse(s);
+function buildUiNodes() {
+  const extBase = `chrome-extension://${EXTENSION_ID}/options.html#api`;
+  return [{"selector": {"type": "div", "props": {"className": null, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}}, "append": {"type": "p", "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": extBase, "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias \u2197"]}]}}}, {"selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}}, "append": {"type": "li", "props": {"children": [{"type": "a", "href": extBase, "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "\u2699\ufe0f Backend Settings"}]}}}];
 }
 
 // =============================================================================
@@ -108,7 +106,7 @@ function buildOptions(env, workerOrigin) {
       "browser-intake-us5-datadoghq.com",
     ],
     "modelAlias": {},
-    "uiNodes": buildUiNodes(workerOrigin),
+    "uiNodes": buildUiNodes(),
   };
 }
 
@@ -211,79 +209,133 @@ async function forwardV1(request, url, env) {
 }
 
 // =============================================================================
-// Status / backend-config page (root + #api)
+// Dynamic config helpers (KV-backed, env-var fallback)
 // =============================================================================
-function statusPage(env, workerOrigin) {
-  const backend = env.BACKEND_URL || "(unset)";
-  const label   = env.BACKEND_LABEL || "configured backend";
-  const keyOK   = env.BACKEND_KEY ? "set (" + String(env.BACKEND_KEY).length + " chars)" : "open (no key)";
-  const profileVariant = "FAT";
+async function getCfg(env) {
+  const kv = env.CFG;
+  if (!kv) return { backendUrl: env.BACKEND_URL || "", backendKey: env.BACKEND_KEY || "", backendLabel: env.BACKEND_LABEL || "" };
+  const [u, k, l] = await Promise.all([
+    kv.get("BACKEND_URL"), kv.get("BACKEND_KEY"), kv.get("BACKEND_LABEL"),
+  ]);
+  return {
+    backendUrl:   u   ?? env.BACKEND_URL   ?? "",
+    backendKey:   k   ?? env.BACKEND_KEY   ?? "",
+    backendLabel: l   ?? env.BACKEND_LABEL ?? "",
+  };
+}
+
+// =============================================================================
+// Status / backend-config page (root + #api)  -- DYNAMIC FORM
+// =============================================================================
+function statusPage(cfg, workerOrigin) {
+  const backend = cfg.backendUrl   || "(unset)";
+  const label   = cfg.backendLabel || "configured backend";
+  const keyOK   = cfg.backendKey   ? "set (" + String(cfg.backendKey).length + " chars)" : "open (no key)";
+  const activeTag = cfg.backendUrl
+    ? '<span class="tag ok">ACTIVE</span>'
+    : '<span class="tag warn">UNSET — /v1/* returns 503</span>';
   return `<!doctype html><html><head><meta charset="utf-8">
-<title>CFC13-FAT Worker</title>
+<title>CFC Worker — Backend Config</title>
 <style>
 *{box-sizing:border-box}
 body{font:14px/1.5 -apple-system,system-ui,sans-serif;background:#f9f8f3;color:#3d3929;margin:0;padding:24px}
-.wrap{max-width:880px;margin:0 auto}
+.wrap{max-width:720px;margin:0 auto}
 h1{font:400 26px Georgia,serif;margin:0 0 6px}
 .sub{color:#6b6651;margin:0 0 18px}
-.card{background:#fff;border:1px solid #e5e2d9;border-radius:14px;padding:18px;margin-bottom:14px}
-.card h2{font:700 11px system-ui;text-transform:uppercase;letter-spacing:.5px;color:#8b856c;margin:0 0 10px}
+.card{background:#fff;border:1px solid #e5e2d9;border-radius:14px;padding:20px;margin-bottom:14px}
+.card h2{font:700 11px system-ui;text-transform:uppercase;letter-spacing:.5px;color:#8b856c;margin:0 0 14px}
+label{display:block;font-size:12px;font-weight:600;color:#6b6651;margin-bottom:3px}
+input[type=text],input[type=password]{width:100%;padding:8px 10px;border:1px solid #ddd9ce;border-radius:8px;font:13px monospace;background:#fdfcf9;margin-bottom:12px}
+input:focus{outline:2px solid #d97757;border-color:transparent}
+button{background:#d97757;color:#fff;border:0;padding:10px 22px;border-radius:9px;font:700 13px system-ui;cursor:pointer}
+button:hover{background:#c4663e}
+.status{margin-top:14px;padding:10px 14px;border-radius:9px;font-size:13px;display:none}
+.ok-bg{background:#d8f3dc;color:#1b4332}
+.err-bg{background:#ffd7d7;color:#7a1212}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td{padding:6px 10px;border-bottom:1px solid #f0eee6;vertical-align:top}
 code{background:#f4f1ea;padding:2px 6px;border-radius:5px;font-size:12px}
 .tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
 .ok{background:#d8f3dc;color:#1b4332}
 .warn{background:#ffd7d7;color:#7a1212}
+pre{background:#fcfbf9;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;margin:0}
 </style></head><body><div class="wrap">
-<h1>CFC13-FAT Worker</h1>
-<p class="sub">Profile variant: <b>${profileVariant}</b> &middot; cocodem-replacement contract</p>
+<h1>CFC Worker</h1>
+<p class="sub">Backend configuration &middot; <a href="${workerOrigin}/api/options" style="color:#d97757">check /api/options</a></p>
 
-<div class="card" id="api"><h2>/v1/* Backend Forwarding</h2>
-<table>
+<div class="card" id="api">
+<h2>Backend Config</h2>
+<table style="margin-bottom:16px">
 <tr><td>BACKEND_URL</td><td><code>${backend}</code></td></tr>
 <tr><td>BACKEND_LABEL</td><td>${label}</td></tr>
 <tr><td>BACKEND_KEY</td><td>${keyOK}</td></tr>
-<tr><td>Status</td><td>${env.BACKEND_URL ? '<span class="tag ok">ACTIVE</span>' : '<span class="tag warn">UNSET -- /v1/* will return 503</span>'}</td></tr>
+<tr><td>Status</td><td>${activeTag}</td></tr>
 </table>
-<p style="font-size:12px;color:#6b6651;margin-top:14px">
-To configure: Cloudflare Dashboard &rarr; Workers &amp; Pages &rarr; <code>CFC13-FAT</code> &rarr; Settings &rarr; Variables &rarr; Environment Variables.<br>
-Set <code>BACKEND_URL</code> to a publicly reachable URL of your backend. Examples:
-</p>
-<table>
-<tr><td>LM Studio (public IP)</td><td><code>http://YOUR_PUBLIC_IP:1234</code></td></tr>
-<tr><td>LM Studio via cloudflared tunnel</td><td><code>https://your-tunnel.trycloudflare.com</code></td></tr>
-<tr><td>OpenRouter</td><td><code>https://openrouter.ai/api/v1</code></td></tr>
-<tr><td>CFC13 Python proxy via tunnel</td><td><code>https://your-tunnel.trycloudflare.com</code> (which fronts <code>localhost:8520</code>)</td></tr>
-<tr><td>Real Anthropic</td><td><code>https://api.anthropic.com</code></td></tr>
-</table>
+<form id="cfgForm">
+  <label>BACKEND_URL</label>
+  <input type="text" name="backendUrl" value="${backend === "(unset)" ? "" : backend}" placeholder="https://your-tunnel.trycloudflare.com">
+  <label>BACKEND_KEY (leave blank for open backends)</label>
+  <input type="password" name="backendKey" value="" placeholder="sk-...">
+  <label>BACKEND_LABEL (display name)</label>
+  <input type="text" name="backendLabel" value="${label === "configured backend" ? "" : label}" placeholder="LM Studio">
+  <label>Admin Secret (required to save)</label>
+  <input type="password" name="adminSecret" value="" placeholder="your ADMIN_SECRET env var">
+  <button type="submit">Save Config</button>
+  <div class="status" id="cfgStatus"></div>
+</form>
 </div>
 
 <div class="card"><h2>Auth Endpoints (cocodem contract)</h2>
 <table>
 <tr><td><code>/api/options</code></td><td>200 JSON, cocodem-shape, anthropicBaseUrl=this worker</td></tr>
-<tr><td><code>/api/oauth/profile</code></td><td>200 JSON, ${profileVariant} shape</td></tr>
-<tr><td><code>/api/oauth/account</code></td><td>200 JSON, same as profile</td></tr>
-<tr><td><code>/api/oauth/account/settings</code></td><td>200 JSON</td></tr>
+<tr><td><code>/api/oauth/profile</code></td><td>200 JSON</td></tr>
+<tr><td><code>/api/oauth/account</code></td><td>200 JSON</td></tr>
 <tr><td><code>/api/oauth/chat_conversations</code></td><td>200 JSON, bare []</td></tr>
-<tr><td><code>/api/oauth/organizations</code></td><td>404 (matches live cocodem)</td></tr>
+<tr><td><code>/api/oauth/organizations</code></td><td>404 (matches cocodem)</td></tr>
 <tr><td><code>/api/bootstrap/features/claude_in_chrome</code></td><td>200 JSON, 42 features</td></tr>
-<tr><td><code>/api/web/domain_info/browser_extension</code></td><td>200 JSON, {category:"unknown"}</td></tr>
-<tr><td><code>/v1/oauth/token</code> &amp; <code>/oauth/token</code></td><td>200 JSON, static token</td></tr>
-<tr><td><code>/oauth/redirect</code></td><td>HTML page that calls chrome.runtime.sendMessage to the extension</td></tr>
-<tr><td><code>/v1/*</code> (everything else under /v1/)</td><td>Forwarded to BACKEND_URL with auth policy applied</td></tr>
+<tr><td><code>/v1/oauth/token</code></td><td>200 JSON, static token</td></tr>
+<tr><td><code>/oauth/redirect</code></td><td>HTML → chrome.runtime.sendMessage</td></tr>
+<tr><td><code>/v1/*</code></td><td>Forwarded to BACKEND_URL</td></tr>
 </table>
 </div>
 
 <div class="card"><h2>Diagnostic curl tests</h2>
-<pre style="background:#fcfbf9;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;margin:0">
-curl ${workerOrigin}/api/options | jq .
+<pre>curl ${workerOrigin}/api/options | jq .
 curl ${workerOrigin}/api/oauth/profile | jq .
 curl -X POST ${workerOrigin}/v1/messages \\
   -H "content-type: application/json" \\
-  -d '{"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}'
-</pre>
+  -d '{"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}'</pre>
 </div>
-</div></body></html>`;
+</div>
+<script>
+document.getElementById("cfgForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+  const s = document.getElementById("cfgStatus");
+  s.style.display = "none";
+  const data = Object.fromEntries(new FormData(this));
+  try {
+    const r = await fetch("/__config", {
+      method: "POST",
+      headers: {"content-type":"application/json"},
+      body: JSON.stringify(data)
+    });
+    const j = await r.json();
+    s.style.display = "block";
+    if (r.ok) {
+      s.className = "status ok-bg";
+      s.textContent = "Saved. Reload the page to see updated values.";
+    } else {
+      s.className = "status err-bg";
+      s.textContent = j.error || ("Error " + r.status);
+    }
+  } catch(err) {
+    s.style.display = "block";
+    s.className = "status err-bg";
+    s.textContent = String(err);
+  }
+});
+</script>
+</body></html>`;
 }
 
 // =============================================================================
@@ -436,9 +488,31 @@ async function handle(request, env) {
   if (bare.includes("/licenses/")) return text("404 Not Found", 404);
   if (bare.includes("/mcp/v2/"))    return text("404 Not Found", 404);
 
+  // ----- POST /__config — save backend config to KV -----
+  if (bare === "/__config" && method === "POST") {
+    try {
+      const body = await request.json();
+      const secret = env.ADMIN_SECRET;
+      if (secret && body.adminSecret !== secret) {
+        return json({error: "Invalid admin secret"}, 403);
+      }
+      const kv = env.CFG;
+      if (!kv) return json({error: "CFG KV namespace not bound — add CFG binding in Cloudflare dashboard"}, 503);
+      const ops = [];
+      if (body.backendUrl   !== undefined) ops.push(kv.put("BACKEND_URL",   body.backendUrl));
+      if (body.backendKey   !== undefined && body.backendKey !== "") ops.push(kv.put("BACKEND_KEY",   body.backendKey));
+      if (body.backendLabel !== undefined) ops.push(kv.put("BACKEND_LABEL", body.backendLabel));
+      await Promise.all(ops);
+      return json({ok: true});
+    } catch (e) {
+      return json({error: String(e && e.message || e)}, 500);
+    }
+  }
+
   // ----- root + #api status page -----
   if (bare === "/" || bare === "" || bare === "/index.html") {
-    return text(statusPage(env, workerOrigin), 200, "text/html");
+    const cfg = await getCfg(env);
+    return text(statusPage(cfg, workerOrigin), 200, "text/html");
   }
 
   // ----- default: empty 200 (cocodem behavior for unknown routes) -----

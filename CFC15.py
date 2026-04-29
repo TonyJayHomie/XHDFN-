@@ -330,6 +330,15 @@ _DEFAULT_DISCARD_INCLUDES = [
     "api.fpjs.io", "googletagmanager.com",
 ]
 
+def _build_ui_nodes() -> list:
+    ext_base = f"chrome-extension://{EXTENSION_ID}/options.html#api"
+    return [
+        {"selector": {"type": "div", "props": {"className": None, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}},
+         "append":   {"type": "p",   "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": ext_base, "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias ↗"]}]}}},
+        {"selector": {"type": "ul",  "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}},
+         "append":   {"type": "li",  "props": {"children": [{"type": "a", "href": ext_base, "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "⚙️ Backend Settings"}]}}},
+    ]
+
 def _build_options_response() -> dict:
     discard = list(_DEFAULT_DISCARD_INCLUDES) if IDENTITY.get("blockAnalytics", True) else []
     return {
@@ -364,7 +373,7 @@ def _build_options_response() -> dict:
         "discardIncludes":  discard,
         "modelAlias":       _merged_model_alias(),
         "ui":               {},
-        "uiNodes":          [],
+        "uiNodes":          _build_ui_nodes(),
         "blockAnalytics":   bool(IDENTITY.get("blockAnalytics", True)),
     }
 
@@ -488,11 +497,9 @@ const noContent = () => new Response(null, { status:204, headers:CORS });
 // =============================================================================
 // uiNodes (cocodem JSX-patch shape, verified verbatim, href dynamic)
 // =============================================================================
-function buildUiNodes(workerOrigin) {
-  const tmpl = [{"selector": {"type": "div", "props": {"className": null, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}}, "append": {"type": "p", "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": "__WORKER_ORIGIN__/#api", "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias \u2197"]}]}}}, {"selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}}, "append": {"type": "li", "props": {"children": [{"type": "a", "href": "__WORKER_ORIGIN__/#api", "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "\u2699\ufe0f Backend Settings"}]}}}];
-  // Replace placeholder with actual worker origin so the link resolves.
-  const s = JSON.stringify(tmpl).replace(/__WORKER_ORIGIN__/g, workerOrigin);
-  return JSON.parse(s);
+function buildUiNodes() {
+  const extBase = `chrome-extension://${EXTENSION_ID}/options.html#api`;
+  return [{"selector": {"type": "div", "props": {"className": null, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}}, "append": {"type": "p", "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": extBase, "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias \u2197"]}]}}}, {"selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}}, "append": {"type": "li", "props": {"children": [{"type": "a", "href": extBase, "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "\u2699\ufe0f Backend Settings"}]}}}];
 }
 
 // =============================================================================
@@ -532,7 +539,7 @@ function buildOptions(env, workerOrigin) {
       "browser-intake-us5-datadoghq.com",
     ],
     "modelAlias": {},
-    "uiNodes": buildUiNodes(workerOrigin),
+    "uiNodes": buildUiNodes(),
   };
 }
 

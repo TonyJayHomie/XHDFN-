@@ -113,21 +113,101 @@ function buildOptions(env, workerOrigin) {
 }
 
 // =============================================================================
-// /v1/* -- LLM traffic must NEVER reach the worker.
-// request.js routes apiBaseIncludes directly to apiBaseUrl (local LLM).
-// If this endpoint is ever hit it means cfcBase misconfiguration; reject cleanly.
+// /v1/* forwarder to configurable backend
 // =============================================================================
-function forwardV1(request, url, env) {
-  return json({
-    error: {
-      type: "misdirected_request",
-      message: "LLM traffic must go directly from the extension to your local " +
-               "backend (apiBaseUrl), not through this Cloudflare Worker. " +
-               "Cloudflare cannot reach 127.0.0.1 (Error 1003). " +
-               "Ensure cfcBase in request.js points to http://localhost:8520/ " +
-               "and apiBaseUrl in cfc_identity.json points to your LLM backend.",
+async function forwardV1(request, url, env) {
+  const backendUrl = (env.BACKEND_URL || "").replace(/\/+$/, "");
+  if (!backendUrl) {
+    return json({
+      error: {
+        type: "config_error",
+        message: "Worker BACKEND_URL is not set. Configure in Cloudflare " +
+                 "dashboard: Workers -> <name> -> Settings -> Variables -> " +
+                 "Environment Variables. Set BACKEND_URL to your backend " +
+                 "(e.g. http://your-lmstudio-public-ip:1234, or " +
+                 "https://openrouter.ai/api/v1, or your cloudflared tunnel " +
+                 "to localhost:8520)."
+      }
+    }, 503);
+  }
+
+  // Build target URL: BACKEND_URL + (url.pathname + url.search)
+  // url.pathname starts with /v1/ already.
+  const target = backendUrl + url.pathname + url.search;
+
+  // Filter incoming headers to safe set, then apply auth policy.
+  const allowed = new Set([
+    "content-type","accept",
+    "anthropic-version","anthropic-beta",
+    "anthropic-client-platform","anthropic-client-version",
+    "x-service-name","x-stainless-arch","x-stainless-lang","x-stainless-os",
+    "x-stainless-package-version","x-stainless-runtime",
+    "x-stainless-runtime-version","x-stainless-retry-count",
+    "x-stainless-timeout","x-stainless-helper-method",
+    "x-app",
+  ]);
+  const outHeaders = new Headers();
+  for (const [k,v] of request.headers.entries()) {
+    if (allowed.has(k.toLowerCase())) outHeaders.set(k, v);
+  }
+  // Auth policy:
+  //   - If BACKEND_KEY configured -> use it as Bearer.
+  //   - Else if target is anthropic-shaped -> pass through extension's auth.
+  //   - Else -> STRIP auth entirely (open backends 401 on cocodem static token).
+  const isAnthropicTarget =
+    /(^|\/\/)(api\.anthropic\.com|console\.anthropic\.com|platform\.claude\.com)/i
+      .test(backendUrl);
+  const inAuth = request.headers.get("Authorization") || "";
+  const inXKey = request.headers.get("x-api-key") || "";
+
+  if (env.BACKEND_KEY) {
+    outHeaders.set("Authorization", "Bearer " + env.BACKEND_KEY);
+    outHeaders.set("x-api-key", env.BACKEND_KEY);
+  } else if (isAnthropicTarget && inAuth) {
+    outHeaders.set("Authorization", inAuth);
+    if (inXKey) outHeaders.set("x-api-key", inXKey);
+  } else {
+    // open backend (LM Studio with auth off) -- send NOTHING.
+    outHeaders.delete("Authorization");
+    outHeaders.delete("x-api-key");
+    if (!isAnthropicTarget) {
+      outHeaders.delete("anthropic-version");
+      outHeaders.delete("anthropic-beta");
+      outHeaders.delete("anthropic-client-platform");
+      outHeaders.delete("anthropic-client-version");
     }
-  }, 421);
+  }
+
+  const init = {
+    method: request.method,
+    headers: outHeaders,
+    redirect: "follow",
+  };
+  if (!["GET","HEAD"].includes(request.method)) {
+    init.body = await request.arrayBuffer();
+  }
+
+  let resp;
+  try {
+    resp = await fetch(target, init);
+  } catch (e) {
+    return json({
+      error: {
+        type: "upstream_error",
+        message: "fetch to BACKEND_URL failed: " + (e && e.message || e),
+        target: target,
+      }
+    }, 502);
+  }
+
+  // Pass response through with CORS headers added.
+  const respHeaders = new Headers(resp.headers);
+  for (const [k,v] of Object.entries(CORS)) respHeaders.set(k, v);
+  return new Response(resp.body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: respHeaders,
+  });
 }
 
 // =============================================================================

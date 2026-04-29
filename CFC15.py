@@ -364,16 +364,7 @@ def _build_options_response() -> dict:
         "discardIncludes":  discard,
         "modelAlias":       _merged_model_alias(),
         "ui":               {},
-        "uiNodes":          [
-            {
-                "selector": {"type": "div", "props": {"className": None, "children": [{"type": "label", "props": {"htmlFor": "apiKey"}}]}},
-                "append":   {"type": "p",   "props": {"className": "mt-2 font-bold text-text-300", "children": [{"type": "a", "href": BACKEND_SETTINGS_URL, "target": "_blank", "className": "inline-link", "style": {}, "children": ["Backend URL and Model Alias ↗"]}]}},
-            },
-            {
-                "selector": {"type": "ul", "props": {"className": "flex gap-1 md:flex-col mb-0", "children": [{"type": "li", "props": {}}]}},
-                "append":   {"type": "li", "props": {"children": [{"type": "a", "href": BACKEND_SETTINGS_URL, "target": "_blank", "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100", "children": "⚙️ Backend Settings"}]}},
-            },
-        ],
+        "uiNodes":          [],
         "blockAnalytics":   bool(IDENTITY.get("blockAnalytics", True)),
     }
 
@@ -1005,9 +996,9 @@ def write_sanitized_request_js():
 
     clean = (
         "// request.js -- clean CFC replacement.\n"
-        f"// cfcBase: {CFC_BASE} (local proxy, primary)\n"
+        f"// cfcBase: {REMOTE_BASE} (Worker) || {CFC_BASE} (local fallback)\n"
         "// Zero phone-home to cocodem servers.\n\n"
-        f'const cfcBase = "{CFC_BASE}" || ""\n'
+        f'const cfcBase = "{REMOTE_BASE}" || "{CFC_BASE}" || ""\n'
     ) + r"""
 
 export function isMatch(u, includes) {

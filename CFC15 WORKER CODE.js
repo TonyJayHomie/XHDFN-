@@ -3,14 +3,45 @@
 // Set BACKEND_URL env var (or use the configurable page at /#api).
 // LOCAL_CFC fallback for /backend_settings: http://localhost:8520
 
+// CFC14 Cloudflare Worker -- cocodem-replacement (test2-derived, user-provided base)
+// =============================================================================
+// Mirrors the live cocodem worker auth/contract endpoints byte-for-byte AND
+// forwards /v1/* to a configurable backend (LM Studio, OpenRouter, Anthropic,
+// or any Anthropic-compatible endpoint).
+//
 // =============================================================================
 // CONFIGURATION (set as Worker Variables in Cloudflare dashboard)
 // =============================================================================
-//   BACKEND_URL   - REQUIRED for /v1/* forwarding.
-//   BACKEND_KEY   - Optional API key.
-//   BACKEND_LABEL - Display name on the worker status page.
-//   CONFIG_KV     - Optional KV namespace binding for persistent config.
-//   CONFIG_TOKEN  - Optional shared secret for the config save form.
+//   BACKEND_URL   - REQUIRED for /v1/* forwarding. e.g.:
+//                     "http://your-public-ip:1234"   (LM Studio direct)
+//                     "https://openrouter.ai/api/v1"  (OpenRouter)
+//                     "https://api.anthropic.com"     (real Anthropic)
+//                     "http://localhost:8520"         (CFC14 Python proxy
+//                                                      via cloudflared tunnel)
+//                   DEFAULT: empty -> /v1/* returns 503 with config hint.
+//                   You can also configure interactively at
+//                     https://<your-worker>.workers.dev/#api
+//                   which posts BACKEND_URL/KEY/LABEL to /api/worker-config.
+//                   Those values are stored in the CONFIG_KV namespace if
+//                   bound, otherwise saved to a fallback in-memory store
+//                   (resets on cold start).
+//
+//   BACKEND_KEY   - Optional API key. If set, replaces the incoming
+//                   Authorization header with "Bearer <key>". If empty,
+//                   STRIPS Authorization (open backends like LM Studio
+//                   with auth disabled return 401 on the cocodem static
+//                   token otherwise).
+//
+//   BACKEND_LABEL - Display name on the worker's #api status page
+//                   (default "configured backend").
+//
+//   CONFIG_KV     - Optional KV namespace binding. If bound, the worker's
+//                   /#api page can persist BACKEND_URL/KEY/LABEL across
+//                   deployments. Without it, in-memory only.
+//
+//   CONFIG_TOKEN  - Optional shared secret. If set, the /#api save form
+//                   requires this token to write config (prevents random
+//                   visitors from changing your backend).
 // =============================================================================
 
 const EXTENSION_ID  = "fcoeoabgfenejglbffodgkkbkcdhcgfn";
@@ -18,7 +49,7 @@ const ACCOUNT_UUID  = "ac507011-00b5-56c4-b3ec-ad820dbafbc1";
 const ORG_UUID      = "1b61ee4a-d0ce-50b5-8b67-7eec034d3d08";
 
 // In-memory config fallback when no KV binding is present.
-const _MEM_CONFIG = { BACKEND_URL: "", BACKEND_KEY: "", BACKEND_LABEL: "" };
+const _MEM_CONFIG = { BACKEND_URL: "", BACKEND_KEY: "", BACKEND_LABEL: "", SYSTEM_PROMPT: "" };
 
 // =============================================================================
 // FAT profile (verbatim from live cocodem)
@@ -26,9 +57,12 @@ const _MEM_CONFIG = { BACKEND_URL: "", BACKEND_KEY: "", BACKEND_LABEL: "" };
 const PROFILE = {"account":{"uuid":ACCOUNT_UUID,"id":ACCOUNT_UUID,"email_address":"free@claudeagent.ai","email":"free@claudeagent.ai","full_name":"Local User","name":"Local User","display_name":"Local User","has_password":true,"has_completed_onboarding":true,"preferred_language":"en-US","has_claude_pro":true,"has_claude_max":true,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","settings":{"theme":"system","language":"en-US"}},"organization":{"uuid":ORG_UUID,"id":ORG_UUID,"name":"Local","role":"admin","organization_type":"personal","billing_type":"self_serve","capabilities":["chat","claude_pro_plan","claude_max_plan","api","computer_use","claude_for_chrome"],"rate_limit_tier":"default_claude_max","settings":{},"created_at":"2024-01-01T00:00:00Z"},"organizations":[{"uuid":ORG_UUID,"id":ORG_UUID,"name":"Local","role":"admin","organization_type":"personal","billing_type":"self_serve","capabilities":["chat","claude_pro_plan","api","computer_use","claude_for_chrome"],"rate_limit_tier":"default_claude_max","settings":{},"created_at":"2024-01-01T00:00:00Z"}],"memberships":[{"organization":{"uuid":ORG_UUID,"id":ORG_UUID,"name":"Local","role":"admin","organization_type":"personal","billing_type":"self_serve"},"role":"admin","joined_at":"2024-01-01T00:00:00Z"}],"active_organization_uuid":ORG_UUID};
 
 // =============================================================================
-// 42-feature Statsig payload
+// 42 Statsig features that fix the blank sidepanel + light up everything in the
+// extension. Object form so the bundle's getFeatureValue / isFeatureEnabled
+// both work.  (Boolean gates AND object-valued gates included.)
 // =============================================================================
-function buildFeatures() {
+function buildFeatures(systemPrompt) {
+  if (!systemPrompt) systemPrompt = "You are Claude, an AI assistant created by Anthropic, operating as a browser automation assistant.";
   const f = {};
   const set = (gate, value, idType, ruleId) => {
     if (!idType) idType = "userID";
@@ -39,6 +73,7 @@ function buildFeatures() {
       passed: true, is_device_based: false,
     };
   };
+  // Boolean gates -- TRUE
   set("chrome_ext_eligibility", true);
   set("chrome_ext_allow_api_key", true);
   set("chrome_ext_edit_system_prompt", true);
@@ -55,12 +90,15 @@ function buildFeatures() {
   set("crochet_browse_shortcuts", true, "anonymousID");
   set("crochet_can_skip_permissions", true, "anonymousID");
   set("crochet_default_debug_mode", true, "anonymousID");
+  // KEEP false: prevents launchWebAuthFlow infinite loop
   set("cic_ext_silent_reauth", false);
+  // Boolean gates -- FALSE (telemetry / fingerprint surfaces)
   set("cascade_nebula", false, "organizationUUID");
   set("chrome_extension_show_user_email", false);
   set("crochet_can_see_browser_indicator", false, "anonymousID");
   set("crochet_can_submit_feedback", false, "anonymousID");
   set("crochet_upsell_ant_build", false, "anonymousID");
+  // Object-valued gates
   set("chrome_ext_models", {
     default: "claude-haiku-4-5-20251001",
     default_model_override_id: "launch-2025-11-24-1",
@@ -80,13 +118,14 @@ function buildFeatures() {
   set("chrome_ext_announcement", {id:"local-cfc", enabled:false, text:""});
   set("chrome_ext_permission_modes", {default:"ask", options:["ask","auto","manual"]});
   set("extension_landing_page_url", {relative_url:"/chrome/installed"});
-  set("chrome_ext_system_prompt", {systemPrompt:"You are Claude, an AI assistant created by Anthropic, operating as a browser automation assistant."});
-  set("chrome_ext_skip_perms_system_prompt", {skipPermissionsSystemPrompt:"You are Claude, an AI assistant created by Anthropic, operating as a browser automation assistant."});
+  set("chrome_ext_system_prompt", {systemPrompt: systemPrompt});
+  set("chrome_ext_skip_perms_system_prompt", {skipPermissionsSystemPrompt: systemPrompt});
   set("chrome_ext_multiple_tabs_system_prompt", {multipleTabsSystemPrompt:"<browser_tabs_usage>You can work with multiple browser tabs simultaneously.</browser_tabs_usage>"});
   set("chrome_ext_explicit_permissions_prompt", {prompt:"<explicit-permission>Claude requires explicit user permission for irreversible actions.</explicit-permission>"}, "organizationUUID");
   set("chrome_ext_tool_usage_prompt", {prompt:"<tool_usage>Maintain a todo list for multi-step tasks.</tool_usage>"}, "organizationUUID");
   set("chrome_ext_planning_mode_prompt", {prompt:"Work with the user to create a plan, then execute it."});
   set("chrome_ext_custom_tool_prompts", {update_plan:{toolDescription:"Update the plan for user approval."}, TodoWrite:{toolDescription:"Create a structured task list."}}, "organizationUUID");
+  // crochet_* domain skill stubs
   set("crochet_chips", {}, "anonymousID");
   set("crochet_domain_skills", {}, "anonymousID");
   set("crochet_github", {skill:""}, "anonymousID");
@@ -96,14 +135,16 @@ function buildFeatures() {
   set("crochet_linkedin", {skill:""}, "anonymousID");
   set("crochet_slack", {skill:""}, "anonymousID");
   set("crochet_bad_hostnames", {hostnames:[]}, "organizationUUID");
+  // CIC timeouts / experiments
   set("cic_ext_timeouts", {oauthRefreshMs:10000, debuggerAttachMs:8000, cdpSendCommandMs:30000});
   set("cic_screencast_warmup", false);
   return { features: f };
 }
+// FEATURES_FULL is rebuilt per-request with dynamic systemPrompt (see buildOptions)
 const FEATURES_FULL = buildFeatures();
 
 // =============================================================================
-// CORS + helpers
+// CORS + JSON helpers
 // =============================================================================
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -137,6 +178,7 @@ async function loadConfig(env) {
   let url   = env.BACKEND_URL   || "";
   let key   = env.BACKEND_KEY   || "";
   let label = env.BACKEND_LABEL || "";
+  // Layer KV on top of env, but only when env is empty (env wins).
   if (env.CONFIG_KV) {
     try {
       if (!url)   url   = (await env.CONFIG_KV.get("BACKEND_URL"))   || "";
@@ -147,7 +189,12 @@ async function loadConfig(env) {
   if (!url   && _MEM_CONFIG.BACKEND_URL)   url   = _MEM_CONFIG.BACKEND_URL;
   if (!key   && _MEM_CONFIG.BACKEND_KEY)   key   = _MEM_CONFIG.BACKEND_KEY;
   if (!label && _MEM_CONFIG.BACKEND_LABEL) label = _MEM_CONFIG.BACKEND_LABEL;
-  return { BACKEND_URL: url, BACKEND_KEY: key, BACKEND_LABEL: label };
+  let sysprompt = env.SYSTEM_PROMPT || "";
+  if (!sysprompt && env.CONFIG_KV) {
+    try { sysprompt = (await env.CONFIG_KV.get("SYSTEM_PROMPT")) || ""; } catch (e) {}
+  }
+  if (!sysprompt && _MEM_CONFIG.SYSTEM_PROMPT) sysprompt = _MEM_CONFIG.SYSTEM_PROMPT;
+  return { BACKEND_URL: url, BACKEND_KEY: key, BACKEND_LABEL: label, SYSTEM_PROMPT: sysprompt };
 }
 
 async function saveConfig(env, cfg) {
@@ -156,11 +203,13 @@ async function saveConfig(env, cfg) {
       if (cfg.BACKEND_URL   !== undefined) await env.CONFIG_KV.put("BACKEND_URL",   String(cfg.BACKEND_URL   || ""));
       if (cfg.BACKEND_KEY   !== undefined) await env.CONFIG_KV.put("BACKEND_KEY",   String(cfg.BACKEND_KEY   || ""));
       if (cfg.BACKEND_LABEL !== undefined) await env.CONFIG_KV.put("BACKEND_LABEL", String(cfg.BACKEND_LABEL || ""));
+      if (cfg.SYSTEM_PROMPT !== undefined) await env.CONFIG_KV.put("SYSTEM_PROMPT", String(cfg.SYSTEM_PROMPT || ""));
     } catch (e) {}
   }
-  if (cfg.BACKEND_URL   !== undefined) _MEM_CONFIG.BACKEND_URL   = String(cfg.BACKEND_URL   || "");
-  if (cfg.BACKEND_KEY   !== undefined) _MEM_CONFIG.BACKEND_KEY   = String(cfg.BACKEND_KEY   || "");
-  if (cfg.BACKEND_LABEL !== undefined) _MEM_CONFIG.BACKEND_LABEL = String(cfg.BACKEND_LABEL || "");
+  if (cfg.BACKEND_URL    !== undefined) _MEM_CONFIG.BACKEND_URL    = String(cfg.BACKEND_URL    || "");
+  if (cfg.BACKEND_KEY    !== undefined) _MEM_CONFIG.BACKEND_KEY    = String(cfg.BACKEND_KEY    || "");
+  if (cfg.BACKEND_LABEL  !== undefined) _MEM_CONFIG.BACKEND_LABEL  = String(cfg.BACKEND_LABEL  || "");
+  if (cfg.SYSTEM_PROMPT  !== undefined) _MEM_CONFIG.SYSTEM_PROMPT  = String(cfg.SYSTEM_PROMPT  || "");
 }
 
 // =============================================================================
@@ -177,7 +226,7 @@ function buildUiNodes() {
 // =============================================================================
 // /api/options
 // =============================================================================
-function buildOptions(workerOrigin) {
+function buildOptions(workerOrigin, systemPrompt) {
   return {
     "mode": "",
     "anthropicBaseUrl": workerOrigin,
@@ -203,6 +252,7 @@ function buildOptions(workerOrigin) {
     ],
     "modelAlias": {},
     "uiNodes": buildUiNodes(),
+    "features": buildFeatures(systemPrompt).features,
   };
 }
 
@@ -215,10 +265,13 @@ async function forwardV1(request, url, cfg) {
     return json({
       error: {
         type: "config_error",
-        message: "Worker BACKEND_URL is not set. Configure it in the Cloudflare dashboard or at " + url.origin + "/#api"
+        message: "Worker BACKEND_URL is not set. Configure it in the " +
+                 "Cloudflare dashboard (Workers -> Settings -> Variables) " +
+                 "or interactively at " + url.origin + "/#api"
       }
     }, 503);
   }
+  // backendUrl + url.pathname (already starts with /v1/) + url.search
   var target = backendUrl + url.pathname + url.search;
 
   var allowed = new Set([
@@ -231,6 +284,7 @@ async function forwardV1(request, url, cfg) {
     "x-stainless-timeout","x-stainless-helper-method",
     "x-app",
   ]);
+  // Allowed forwarded headers
   var out = new Headers();
   for (var pair of request.headers.entries()) {
     if (allowed.has(pair[0].toLowerCase())) out.set(pair[0], pair[1]);
@@ -276,170 +330,190 @@ async function forwardV1(request, url, cfg) {
 // Status / configurable backend page  (root + #api)
 // =============================================================================
 function statusPage(cfg, workerOrigin, kvBound, tokenRequired) {
-  var backend = cfg.BACKEND_URL || "(unset)";
-  var label   = cfg.BACKEND_LABEL || "configured backend";
-  var keyOK   = cfg.BACKEND_KEY ? "set (" + String(cfg.BACKEND_KEY).length + " chars)" : "open (no key)";
-  var persistMsg = kvBound
+  const sysPromptVal = cfg.SYSTEM_PROMPT || "";
+  const backend = cfg.BACKEND_URL || "(unset)";
+  const label   = cfg.BACKEND_LABEL || "configured backend";
+  const keyOK   = cfg.BACKEND_KEY ? "set (" + String(cfg.BACKEND_KEY).length + " chars)" : "open (no key)";
+  const persistMsg = kvBound
     ? "<span class='tag ok'>persistent (KV)</span>"
     : "<span class='tag warn'>in-memory (resets on cold start)</span>";
-  var tokenMsg = tokenRequired
+  const tokenMsg = tokenRequired
     ? "<span class='tag ok'>required</span> -- the form below sends X-CFC-Token"
     : "<span class='tag warn'>not set</span> -- anyone can change BACKEND_URL";
-  var activeTag = cfg.BACKEND_URL
-    ? "<span class=\"tag ok\">ACTIVE</span>"
-    : "<span class=\"tag warn\">UNSET -- /v1/* will return 503</span>";
-  return "<!doctype html><html><head><meta charset=\"utf-8\">\n"
-    + "<title>CFC14 Worker</title>\n"
-    + "<style>\n"
-    + "*{box-sizing:border-box}\n"
-    + "body{font:14px/1.5 -apple-system,system-ui,sans-serif;background:#f9f8f3;color:#3d3929;margin:0;padding:24px}\n"
-    + ".wrap{max-width:920px;margin:0 auto}\n"
-    + "h1{font:400 28px Georgia,serif;margin:0 0 6px}\n"
-    + ".sub{color:#6b6651;margin:0 0 20px}\n"
-    + ".card{background:#fff;border:1px solid #e5e2d9;border-radius:14px;padding:20px;margin-bottom:14px}\n"
-    + ".card h2{font:700 11px system-ui;text-transform:uppercase;letter-spacing:.5px;color:#8b856c;margin:0 0 12px}\n"
-    + "table{width:100%;border-collapse:collapse;font-size:13px}\n"
-    + "td{padding:6px 10px;border-bottom:1px solid #f0eee6;vertical-align:top}\n"
-    + "td:first-child{color:#6b6651;width:34%}\n"
-    + "code{background:#f4f1ea;padding:2px 6px;border-radius:5px;font-size:12px;word-break:break-all}\n"
-    + ".tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}\n"
-    + ".ok{background:#d8f3dc;color:#1b4332}\n"
-    + ".warn{background:#ffd7d7;color:#7a1212}\n"
-    + "input[type=text],input[type=password]{width:100%;padding:8px 10px;border:1px solid #e5e2d9;border-radius:6px;font-size:13px;font-family:inherit}\n"
-    + "label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#8b856c;margin:14px 0 4px}\n"
-    + "button{background:#d97757;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;margin-top:14px}\n"
-    + "button.secondary{background:#e5e2d9;color:#3d3929}\n"
-    + ".row{display:flex;gap:14px;flex-wrap:wrap}\n"
-    + ".row > div{flex:1;min-width:240px}\n"
-    + "pre{background:#fcfbf9;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all}\n"
-    + ".flash{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}\n"
-    + ".flash.ok{background:#d8f3dc;color:#1b4332;display:block}\n"
-    + ".flash.err{background:#ffd7d7;color:#7a1212;display:block}\n"
-    + "</style></head><body><div class=\"wrap\">\n"
-    + "<h1>CFC14 Worker</h1>\n"
-    + "<p class=\"sub\">cocodem-replacement contract &middot; FAT profile &middot; configurable /v1/* forwarder</p>\n"
-    + "<div id=\"flash\" class=\"flash\"></div>\n"
-    + "<div class=\"card\" id=\"api\"><h2>Backend Settings (live)</h2>\n"
-    + "<table>\n"
-    + "<tr><td>BACKEND_URL</td><td><code id=\"cur_url\">" + backend + "</code></td></tr>\n"
-    + "<tr><td>BACKEND_LABEL</td><td>" + label + "</td></tr>\n"
-    + "<tr><td>BACKEND_KEY</td><td>" + keyOK + "</td></tr>\n"
-    + "<tr><td>Status</td><td>" + activeTag + "</td></tr>\n"
-    + "<tr><td>Persistence</td><td>" + persistMsg + "</td></tr>\n"
-    + "<tr><td>CONFIG_TOKEN</td><td>" + tokenMsg + "</td></tr>\n"
-    + "</table>\n"
-    + "<form id=\"cfgform\" style=\"margin-top:18px\" autocomplete=\"off\">\n"
-    + "  <div class=\"row\">\n"
-    + "    <div>\n"
-    + "      <label for=\"f_url\">BACKEND_URL</label>\n"
-    + "      <input type=\"text\" id=\"f_url\" name=\"BACKEND_URL\" placeholder=\"http://YOUR_PUBLIC_IP:1234  or  https://openrouter.ai/api/v1\" value=\"" + (cfg.BACKEND_URL || "") + "\">\n"
-    + "    </div>\n"
-    + "    <div>\n"
-    + "      <label for=\"f_label\">BACKEND_LABEL (optional)</label>\n"
-    + "      <input type=\"text\" id=\"f_label\" name=\"BACKEND_LABEL\" placeholder=\"LM Studio @ home\" value=\"" + (cfg.BACKEND_LABEL || "") + "\">\n"
-    + "    </div>\n"
-    + "  </div>\n"
-    + "  <div class=\"row\">\n"
-    + "    <div>\n"
-    + "      <label for=\"f_key\">BACKEND_KEY (optional)</label>\n"
-    + "      <input type=\"password\" id=\"f_key\" name=\"BACKEND_KEY\" placeholder=\"sk-or-... (leave blank for open LM Studio)\" value=\"\">\n"
-    + "    </div>\n"
-    + "    <div>\n"
-    + "      <label for=\"f_token\">CONFIG_TOKEN (only if Worker requires one)</label>\n"
-    + "      <input type=\"password\" id=\"f_token\" name=\"CONFIG_TOKEN\" value=\"\">\n"
-    + "    </div>\n"
-    + "  </div>\n"
-    + "  <button type=\"submit\">Save backend config</button>\n"
-    + "  <button type=\"button\" class=\"secondary\" id=\"testbtn\">Test /v1/models</button>\n"
-    + "  <button type=\"button\" class=\"secondary\" id=\"clearbtn\">Clear</button>\n"
-    + "</form>\n"
-    + "<p style=\"font-size:12px;color:#6b6651;margin-top:14px\">\n"
-    + "Persistence: <b>" + (kvBound ? "KV (CONFIG_KV namespace)" : "in-memory (resets on Worker cold start)") + "</b>.\n"
-    + "For permanent config, bind a KV namespace named <code>CONFIG_KV</code> in Cloudflare dashboard.\n"
-    + "</p>\n"
-    + "<h2 style=\"margin-top:24px\">Backend examples</h2>\n"
-    + "<table>\n"
-    + "<tr><td>LM Studio (public IP)</td><td><code>http://YOUR_PUBLIC_IP:1234</code></td></tr>\n"
-    + "<tr><td>LM Studio via cloudflared tunnel</td><td><code>https://your-tunnel.trycloudflare.com</code></td></tr>\n"
-    + "<tr><td>OpenRouter</td><td><code>https://openrouter.ai/api/v1</code> + BACKEND_KEY</td></tr>\n"
-    + "<tr><td>CFC14 Python proxy via tunnel</td><td><code>https://your-tunnel.trycloudflare.com</code> (fronts localhost:8520)</td></tr>\n"
-    + "<tr><td>Real Anthropic</td><td><code>https://api.anthropic.com</code></td></tr>\n"
-    + "<tr><td>Ollama</td><td><code>http://YOUR_PUBLIC_IP:11434</code></td></tr>\n"
-    + "</table></div>\n"
-    + "<div class=\"card\"><h2>cocodem auth contract endpoints</h2>\n"
-    + "<table>\n"
-    + "<tr><td><code>/api/options</code></td><td>cocodem-shape, anthropicBaseUrl=this worker</td></tr>\n"
-    + "<tr><td><code>/api/oauth/profile</code></td><td>FAT shape</td></tr>\n"
-    + "<tr><td><code>/api/oauth/account</code></td><td>same as profile</td></tr>\n"
-    + "<tr><td><code>/api/oauth/account/settings</code></td><td>{enabled_mcp_tools:{enabled_key_1:true}}</td></tr>\n"
-    + "<tr><td><code>/api/oauth/chat_conversations</code></td><td>[]</td></tr>\n"
-    + "<tr><td><code>/api/oauth/organizations</code></td><td>404 (matches live cocodem)</td></tr>\n"
-    + "<tr><td><code>/api/bootstrap/features/claude_in_chrome</code></td><td>42 features</td></tr>\n"
-    + "<tr><td><code>/api/web/domain_info/browser_extension</code></td><td>{category:\"unknown\"}</td></tr>\n"
-    + "<tr><td><code>/v1/oauth/token</code></td><td>static cfc-local-permanent token</td></tr>\n"
-    + "<tr><td><code>/oauth/redirect</code></td><td>HTML -> chrome.runtime.sendMessage</td></tr>\n"
-    + "<tr><td><code>/v1/*</code></td><td>forwarded to BACKEND_URL with auth policy</td></tr>\n"
-    + "<tr><td><code>/api/worker-config</code></td><td>GET/POST: programmatic backend config</td></tr>\n"
-    + "</table></div>\n"
-    + "<div class=\"card\"><h2>Diagnostic curl</h2>\n"
-    + "<pre>curl " + workerOrigin + "/api/options | jq .\n"
-    + "curl " + workerOrigin + "/api/oauth/profile | jq .\n"
-    + "curl -X POST " + workerOrigin + "/v1/messages \\\n"
-    + "  -H \"content-type: application/json\" \\\n"
-    + "  -d '{\"model\":\"claude-haiku-4-5\",\"max_tokens\":256,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}'</pre>\n"
-    + "</div>\n"
-    + "</div>\n"
-    + "<script>\n"
-    + "(function(){\n"
-    + "  var flash = document.getElementById(\"flash\");\n"
-    + "  function show(msg, ok) {\n"
-    + "    flash.className = \"flash \" + (ok ? \"ok\" : \"err\");\n"
-    + "    flash.textContent = msg;\n"
-    + "  }\n"
-    + "  document.getElementById(\"cfgform\").addEventListener(\"submit\", function(e) {\n"
-    + "    e.preventDefault();\n"
-    + "    var fd = new FormData(e.target);\n"
-    + "    var body = {\n"
-    + "      BACKEND_URL:   fd.get(\"BACKEND_URL\")   || \"\",\n"
-    + "      BACKEND_KEY:   fd.get(\"BACKEND_KEY\")   || \"\",\n"
-    + "      BACKEND_LABEL: fd.get(\"BACKEND_LABEL\") || \"\",\n"
-    + "    };\n"
-    + "    var headers = {\"content-type\":\"application/json\"};\n"
-    + "    var tok = fd.get(\"CONFIG_TOKEN\");\n"
-    + "    if (tok) headers[\"x-cfc-token\"] = tok;\n"
-    + "    fetch(\"/api/worker-config\", {method:\"POST\", headers:headers, body:JSON.stringify(body)})\n"
-    + "      .then(function(r){ return r.json().then(function(j){ return {r:r,j:j}; }); })\n"
-    + "      .then(function(o){\n"
-    + "        if (o.r.ok) {\n"
-    + "          show(\"Saved. BACKEND_URL = \" + (o.j.BACKEND_URL || \"(empty)\"), true);\n"
-    + "          document.getElementById(\"cur_url\").textContent = o.j.BACKEND_URL || \"(unset)\";\n"
-    + "        } else show(\"Save failed: \" + (o.j.error && o.j.error.message || o.r.status), false);\n"
-    + "      }).catch(function(err){ show(\"Save failed: \" + err, false); });\n"
-    + "  });\n"
-    + "  document.getElementById(\"clearbtn\").addEventListener(\"click\", function() {\n"
-    + "    var headers = {\"content-type\":\"application/json\"};\n"
-    + "    var tok = document.getElementById(\"f_token\").value;\n"
-    + "    if (tok) headers[\"x-cfc-token\"] = tok;\n"
-    + "    fetch(\"/api/worker-config\", {method:\"POST\", headers:headers, body:JSON.stringify({BACKEND_URL:\"\",BACKEND_KEY:\"\",BACKEND_LABEL:\"\"})})\n"
-    + "      .then(function(r){ return r.json(); })\n"
-    + "      .then(function(j){\n"
-    + "        show(\"Cleared.\", true);\n"
-    + "        document.getElementById(\"cur_url\").textContent = \"(unset)\";\n"
-    + "        document.getElementById(\"f_url\").value = \"\";\n"
-    + "        document.getElementById(\"f_label\").value = \"\";\n"
-    + "        document.getElementById(\"f_key\").value = \"\";\n"
-    + "      }).catch(function(err){ show(\"Clear failed: \" + err, false); });\n"
-    + "  });\n"
-    + "  document.getElementById(\"testbtn\").addEventListener(\"click\", function() {\n"
-    + "    show(\"Testing /v1/models...\", true);\n"
-    + "    fetch(\"/v1/models\")\n"
-    + "      .then(function(r){ return r.text().then(function(t){ return {r:r,t:t}; }); })\n"
-    + "      .then(function(o){ show(\"HTTP \" + o.r.status + \" from /v1/models -- \" + o.t.slice(0,200), o.r.ok); })\n"
-    + "      .catch(function(err){ show(\"Test failed: \" + err, false); });\n"
-    + "  });\n"
-    + "})();\n"
-    + "</script>\n"
-    + "</body></html>";
+  const activeTag = cfg.BACKEND_URL
+    ? '<span class="tag ok">ACTIVE</span>'
+    : '<span class="tag warn">UNSET &mdash; /v1/* will return 503</span>';
+  return `<!doctype html><html><head><meta charset="utf-8">
+<title>CFC14 Worker</title>
+<style>
+*{box-sizing:border-box}
+body{font:14px/1.5 -apple-system,system-ui,sans-serif;background:#f9f8f3;color:#3d3929;margin:0;padding:24px}
+.wrap{max-width:920px;margin:0 auto}
+h1{font:400 28px Georgia,serif;margin:0 0 6px}
+.sub{color:#6b6651;margin:0 0 20px}
+.card{background:#fff;border:1px solid #e5e2d9;border-radius:14px;padding:20px;margin-bottom:14px}
+.card h2{font:700 11px system-ui;text-transform:uppercase;letter-spacing:.5px;color:#8b856c;margin:0 0 12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:6px 10px;border-bottom:1px solid #f0eee6;vertical-align:top}
+td:first-child{color:#6b6651;width:34%}
+code{background:#f4f1ea;padding:2px 6px;border-radius:5px;font-size:12px;word-break:break-all}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+.ok{background:#d8f3dc;color:#1b4332}
+.warn{background:#ffd7d7;color:#7a1212}
+input[type=text],input[type=password]{width:100%;padding:8px 10px;border:1px solid #e5e2d9;border-radius:6px;font-size:13px;font-family:inherit}
+label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#8b856c;margin:14px 0 4px}
+button{background:#d97757;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;margin-top:14px}
+button.secondary{background:#e5e2d9;color:#3d3929}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row > div{flex:1;min-width:240px}
+pre{background:#fcfbf9;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all}
+.flash{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}
+.flash.ok{background:#d8f3dc;color:#1b4332;display:block}
+.flash.err{background:#ffd7d7;color:#7a1212;display:block}
+</style></head><body><div class="wrap">
+<h1>CFC14 Worker</h1>
+<p class="sub">cocodem-replacement contract &middot; FAT profile &middot; configurable /v1/* forwarder</p>
+<div id="flash" class="flash"></div>
+<div class="card" id="api"><h2>Backend Settings (live)</h2>
+<table>
+<tr><td>BACKEND_URL</td><td><code id="cur_url">${backend}</code></td></tr>
+<tr><td>BACKEND_LABEL</td><td>${label}</td></tr>
+<tr><td>BACKEND_KEY</td><td>${keyOK}</td></tr>
+<tr><td>Status</td><td>${activeTag}</td></tr>
+<tr><td>Persistence</td><td>${persistMsg}</td></tr>
+<tr><td>CONFIG_TOKEN</td><td>${tokenMsg}</td></tr>
+</table>
+<form id="cfgform" style="margin-top:18px" autocomplete="off">
+  <div class="row">
+    <div>
+      <label for="f_url">BACKEND_URL</label>
+      <input type="text" id="f_url" name="BACKEND_URL"
+        placeholder="http://YOUR_PUBLIC_IP:1234  or  https://openrouter.ai/api/v1"
+        value="${cfg.BACKEND_URL || ""}">
+    </div>
+    <div>
+      <label for="f_label">BACKEND_LABEL (optional)</label>
+      <input type="text" id="f_label" name="BACKEND_LABEL"
+        placeholder="LM Studio @ home"
+        value="${cfg.BACKEND_LABEL || ""}">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label for="f_key">BACKEND_KEY (optional, for keyed backends)</label>
+      <input type="password" id="f_key" name="BACKEND_KEY"
+        placeholder="sk-or-...  (leave blank for open LM Studio)"
+        value="">
+    </div>
+    <div>
+      <label for="f_token">CONFIG_TOKEN (only if Worker requires one)</label>
+      <input type="password" id="f_token" name="CONFIG_TOKEN" value="">
+    </div>
+  </div>
+  <div>
+    <label for="f_sysprompt">SYSTEM_PROMPT (chrome_ext_system_prompt -- blank = default)</label>
+    <textarea id="f_sysprompt" name="SYSTEM_PROMPT" rows="4"
+      style="width:100%;padding:8px 10px;border:1px solid #e5e2d9;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical"
+      placeholder="You are Claude, an AI assistant...">${sysPromptVal}</textarea>
+  </div>
+  <button type="submit">Save backend config</button>
+  <button type="button" class="secondary" id="testbtn">Test /v1/models</button>
+  <button type="button" class="secondary" id="clearbtn">Clear</button>
+</form>
+<p style="font-size:12px;color:#6b6651;margin-top:14px">
+This form persists to <b>${kvBound ? "KV (CONFIG_KV namespace)" : "in-memory (resets on Worker cold start)"}</b>.
+For permanent config across cold starts, bind a KV namespace named <code>CONFIG_KV</code> in the Cloudflare dashboard
+(Workers &rarr; Settings &rarr; Variables &rarr; KV Namespace Bindings).
+You can also set <code>BACKEND_URL</code> as a regular Environment Variable &mdash; that wins over KV.
+</p>
+<h2 style="margin-top:24px">Backend examples</h2>
+<table>
+<tr><td>LM Studio (public IP)</td><td><code>http://YOUR_PUBLIC_IP:1234</code></td></tr>
+<tr><td>LM Studio via cloudflared tunnel</td><td><code>https://your-tunnel.trycloudflare.com</code></td></tr>
+<tr><td>OpenRouter</td><td><code>https://openrouter.ai/api/v1</code> + BACKEND_KEY</td></tr>
+<tr><td>CFC14 Python proxy via tunnel</td><td><code>https://your-tunnel.trycloudflare.com</code> (fronts <code>localhost:8520</code>)</td></tr>
+<tr><td>Real Anthropic</td><td><code>https://api.anthropic.com</code> (passthrough auth)</td></tr>
+<tr><td>Ollama</td><td><code>http://YOUR_PUBLIC_IP:11434</code></td></tr>
+</table></div>
+<div class="card"><h2>cocodem auth contract endpoints</h2>
+<table>
+<tr><td><code>/api/options</code></td><td>cocodem-shape, anthropicBaseUrl=this worker</td></tr>
+<tr><td><code>/api/oauth/profile</code></td><td>FAT shape (memberships+org+account)</td></tr>
+<tr><td><code>/api/oauth/account</code></td><td>same as profile</td></tr>
+<tr><td><code>/api/oauth/account/settings</code></td><td>{enabled_mcp_tools:{enabled_key_1:true}}</td></tr>
+<tr><td><code>/api/oauth/chat_conversations</code></td><td>[]</td></tr>
+<tr><td><code>/api/oauth/organizations</code></td><td>404 (matches live cocodem)</td></tr>
+<tr><td><code>/api/bootstrap/features/claude_in_chrome</code></td><td>42 features (THE blank-sidepanel fix)</td></tr>
+<tr><td><code>/api/web/domain_info/browser_extension</code></td><td>{category:"unknown"}</td></tr>
+<tr><td><code>/v1/oauth/token</code> &amp; <code>/oauth/token</code></td><td>static cfc-local-permanent token</td></tr>
+<tr><td><code>/oauth/redirect</code></td><td>HTML that calls chrome.runtime.sendMessage</td></tr>
+<tr><td><code>/v1/*</code> (everything else under /v1/)</td><td>forwarded to BACKEND_URL with auth policy</td></tr>
+<tr><td><code>/api/worker-config</code></td><td>GET/POST: programmatic backend config (this page uses it)</td></tr>
+</table></div>
+<div class="card"><h2>Diagnostic curl</h2>
+<pre>curl ${workerOrigin}/api/options | jq .
+curl ${workerOrigin}/api/oauth/profile | jq .
+curl -X POST ${workerOrigin}/v1/messages \\
+  -H "content-type: application/json" \\
+  -d '{"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}'</pre>
+</div>
+</div>
+<script>
+(function(){
+  const flash = document.getElementById("flash");
+  function show(msg, ok) {
+    flash.className = "flash " + (ok ? "ok" : "err");
+    flash.textContent = msg;
+  }
+  document.getElementById("cfgform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      BACKEND_URL:   fd.get("BACKEND_URL")   || "",
+      BACKEND_KEY:   fd.get("BACKEND_KEY")   || "",
+      BACKEND_LABEL: fd.get("BACKEND_LABEL") || "",
+      SYSTEM_PROMPT: fd.get("SYSTEM_PROMPT") || "",
+    };
+    const headers = {"content-type":"application/json"};
+    const tok = fd.get("CONFIG_TOKEN");
+    if (tok) headers["x-cfc-token"] = tok;
+    try {
+      const r = await fetch("/api/worker-config",
+        {method:"POST", headers, body: JSON.stringify(body)});
+      const j = await r.json();
+      if (r.ok) {
+        show("Saved. BACKEND_URL = " + (j.BACKEND_URL || "(empty)"), true);
+        document.getElementById("cur_url").textContent = j.BACKEND_URL || "(unset)";
+      } else show("Save failed: " + (j.error && j.error.message || r.status), false);
+    } catch (err) { show("Save failed: " + err, false); }
+  });
+  document.getElementById("clearbtn").addEventListener("click", async () => {
+    const headers = {"content-type":"application/json"};
+    const tok = document.getElementById("f_token").value;
+    if (tok) headers["x-cfc-token"] = tok;
+    const r = await fetch("/api/worker-config",
+      {method:"POST", headers,
+       body: JSON.stringify({BACKEND_URL:"",BACKEND_KEY:"",BACKEND_LABEL:""})});
+    const j = await r.json();
+    if (r.ok) {
+      show("Cleared.", true);
+      document.getElementById("cur_url").textContent = "(unset)";
+      document.getElementById("f_url").value = "";
+      document.getElementById("f_label").value = "";
+      document.getElementById("f_key").value = "";
+    } else show("Clear failed: " + (j.error&&j.error.message||r.status), false);
+  });
+  document.getElementById("testbtn").addEventListener("click", async () => {
+    show("Testing /v1/models...", true);
+    try {
+      const r = await fetch("/v1/models");
+      const t = await r.text();
+      show("HTTP " + r.status + " from /v1/models -- " + t.slice(0,200), r.ok);
+    } catch (err) { show("Test failed: " + err, false); }
+  });
+})();
+</script>
+</body></html>`;
 }
 
 // =============================================================================
@@ -448,30 +522,30 @@ function statusPage(cfg, workerOrigin, kvBound, tokenRequired) {
 function oauthRedirectHtml(code, state) {
   var codeJson  = JSON.stringify(code);
   var stateJson = JSON.stringify(state);
-  return "<!doctype html><html><head><meta charset=\"utf-8\"><title>Sign-in complete</title>\n"
-    + "<style>body{font:15px system-ui;background:#f9f8f3;color:#3d3929;margin:0;padding:48px 24px;text-align:center}\n"
-    + ".c{max-width:420px;margin:0 auto;background:white;border:1px solid #e5e2d9;border-radius:24px;padding:32px}\n"
-    + "button{background:#d97757;color:#fff;border:0;padding:12px 24px;border-radius:10px;font-weight:700;cursor:pointer}\n"
-    + "code{background:#f4f1ea;padding:2px 6px;border-radius:5px;font-size:11px}</style></head><body><div class=\"c\">\n"
-    + "<h1 style=\"font:400 22px Georgia,serif;margin:0 0 10px\">Sign-in complete</h1>\n"
-    + "<p>If the side panel did not open, click below.</p>\n"
-    + "<button id=\"go\">Open side panel</button>\n"
-    + "<p style=\"margin-top:18px;font-size:11px;color:#999\">code=<code>" + code + "</code></p>\n"
-    + "</div>\n"
-    + "<script>\n"
-    + "(function(){\n"
-    + "  var code  = " + codeJson + ";\n"
-    + "  var state = " + stateJson + ";\n"
-    + "  var EXT   = \"" + EXTENSION_ID + "\";\n"
-    + "  function notify() {\n"
-    + "    try { window.opener && window.opener.postMessage({type:\"oauth_redirect\", code:code, state:state, redirect_uri:location.href}, \"*\"); } catch(e){}\n"
-    + "    try { chrome.runtime.sendMessage(EXT, {type:\"oauth_redirect\", code:code, state:state, redirect_uri:location.href}, function(){}); } catch(e){}\n"
-    + "  }\n"
-    + "  document.getElementById(\"go\").addEventListener(\"click\", function() { notify(); setTimeout(function(){ try { window.close(); } catch(e){} }, 200); });\n"
-    + "  notify();\n"
-    + "  setTimeout(function(){ if (window.opener) try { window.close(); } catch(e){} }, 4000);\n"
-    + "})();\n"
-    + "</script></body></html>";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Sign-in complete</title>
+<style>body{font:15px system-ui;background:#f9f8f3;color:#3d3929;margin:0;padding:48px 24px;text-align:center}
+.c{max-width:420px;margin:0 auto;background:white;border:1px solid #e5e2d9;border-radius:24px;padding:32px}
+button{background:#d97757;color:#fff;border:0;padding:12px 24px;border-radius:10px;font-weight:700;cursor:pointer}
+code{background:#f4f1ea;padding:2px 6px;border-radius:5px;font-size:11px}</style></head><body><div class="c">
+<h1 style="font:400 22px Georgia,serif;margin:0 0 10px">Sign-in complete</h1>
+<p>If the side panel did not open, click below.</p>
+<button id="go">Open side panel</button>
+<p style="margin-top:18px;font-size:11px;color:#999">code=<code>${code}</code></p>
+</div>
+<script>
+(function(){
+  const code  = ${codeJson};
+  const state = ${stateJson};
+  const EXT   = "${EXTENSION_ID}";
+  function notify() {
+    try { window.opener && window.opener.postMessage({type:"oauth_redirect", code, state, redirect_uri: location.href}, "*"); } catch(e){}
+    try { chrome.runtime.sendMessage(EXT, {type:"oauth_redirect", code, state, redirect_uri: location.href}, ()=>{}); } catch(e){}
+  }
+  document.getElementById("go").addEventListener("click", () => { notify(); setTimeout(() => { try { window.close(); } catch(e){} }, 200); });
+  notify();
+  setTimeout(() => { if (window.opener) try { window.close(); } catch(e){} }, 4000);
+})();
+</script></body></html>`;
 }
 
 // =============================================================================
@@ -528,6 +602,7 @@ async function handle(request, env) {
         BACKEND_URL:   body.BACKEND_URL,
         BACKEND_KEY:   body.BACKEND_KEY,
         BACKEND_LABEL: body.BACKEND_LABEL,
+        SYSTEM_PROMPT: body.SYSTEM_PROMPT,
       });
       var cur = await loadConfig(env);
       return json({
@@ -547,8 +622,10 @@ async function handle(request, env) {
   }
 
   // cocodem auth/contract endpoints
-  if (bare === "/api/options" || bare.endsWith("/api/options"))
-    return json(buildOptions(workerOrigin));
+  if (bare === "/api/options" || bare.endsWith("/api/options")) {
+    const cfgOpts = await loadConfig(env);
+    return json(buildOptions(workerOrigin, cfgOpts.SYSTEM_PROMPT));
+  }
   if (bare === "/api/oauth/profile" || bare.endsWith("/api/oauth/profile"))
     return json(PROFILE);
   if (bare === "/api/oauth/account" || bare.endsWith("/api/oauth/account"))
@@ -561,10 +638,14 @@ async function handle(request, env) {
     return json({"category":"unknown"});
   if (bare === "/api/web/url_hash_check/browser_extension" || bare.endsWith("/api/web/url_hash_check/browser_extension"))
     return json({"allowed":true});
-  if (bare === "/api/bootstrap/features/claude_in_chrome" || bare.endsWith("/api/bootstrap/features/claude_in_chrome"))
-    return json(FEATURES_FULL);
-  if (bare.startsWith("/api/bootstrap"))
-    return json(Object.assign({}, PROFILE, FEATURES_FULL));
+  if (bare === "/api/bootstrap/features/claude_in_chrome" || bare.endsWith("/api/bootstrap/features/claude_in_chrome")) {
+    const cfgFeat = await loadConfig(env);
+    return json(buildFeatures(cfgFeat.SYSTEM_PROMPT));
+  }
+  if (bare.startsWith("/api/bootstrap")) {
+    const cfgFeat = await loadConfig(env);
+    return json(Object.assign({}, PROFILE, buildFeatures(cfgFeat.SYSTEM_PROMPT)));
+  }
   if (bare.endsWith("/v1/oauth/token") || bare.endsWith("/oauth/token")) {
     return json({
       "access_token":  "cfc-local-permanent.cfc-local-permanent.cfc-local-permanent",
@@ -611,3 +692,4 @@ export default {
     catch (e) { return json({error:{type:"worker_error",message:String(e && e.message || e)}}, 500); }
   },
 };
+

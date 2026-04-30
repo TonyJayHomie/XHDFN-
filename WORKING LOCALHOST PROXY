@@ -1,0 +1,263 @@
+Microsoft Windows [Version 10.0.26200.8246]
+(c) Microsoft Corporation. All rights reserved.
+
+C:\Users\Mustafa\Desktop\7410\nc>python cfc14.py
+==============================================================
+  Claude Extension Sanitizer -- 20260430-095444
+  Source: COCODEMS ORIGINAL ZIP
+  Remote: https://test2.mahnikka.workers.dev/
+  Local:  http://localhost:8520/
+==============================================================
+[ERROR] Source not found: COCODEMS ORIGINAL ZIP
+
+C:\Users\Mustafa\Desktop\7410\nc>python cfc14.py
+==============================================================
+  Claude Extension Sanitizer -- 20260430-095501
+  Source: COCODEMS ORIGINAL ZIP
+  Remote: https://test2.mahnikka.workers.dev/
+  Local:  http://localhost:8520/
+==============================================================
+[OK] Copied 207 files from COCODEMS ORIGINAL ZIP
+[OK] Preserved manifest.json --> manifest2.json
+
+[OK] manifest.json: Claude v1.0.66
+
+[OK] manifest.json patched:
+  KEPT key (occupies cocodem's install slot)
+  REMOVED update_url
+  ADDED localhost host_permissions
+  PATCHED CSP connect-src
+  NARROWED externally_connectable to localhost only
+  REMOVED 4 attacker URL(s) from content_scripts.matches
+  REMOVED 4 attacker URL(s) from web_accessible_resources.matches
+  ADDED 4 localhost match(es) to web_accessible_resources.matches
+[OK] assets/request1.js -- forensic copy with C2 URLs -> localhost:8520
+[OK] assets/request.js -- cfcBase: 'https://test2.mahnikka.workers.dev/' || 'http://localhost:8520/'
+[OK] assets/backend_settings_ui.js (17852 bytes)
+[OK] sidepanel.html -- stripped 650 bytes inline scripts
+[OK] options.html -- stripped 650 bytes inline scripts
+[OK] backend_settings.html (meta-refresh stub)
+[OK] arc.html
+  jsx-runtime: assets\index-BVS4T5_D.js (known)
+[OK] setJsx already in assets\index-BVS4T5_D.js -- skip
+
+[OK] Remote multi-C2 server running on http://localhost:8520/
+     Remote Worker (primary cfcBase): https://test2.mahnikka.workers.dev/
+     (drop-in cocodem-replacement worker)
+     Backends: 1
+       • Default: http://127.0.0.1:1234/v1 [(catch-all)]
+     Identity: user@local / local-user
+     License verification: local (always valid)
+     Telemetry: blocked (Segment, Statsig, Sentry, Datadog, FingerprintJS)
+     /api/identity: GET/POST (proxy is source of truth)
+     /api/options:  live from IDENTITY + BACKENDS
+     Static assets: served from claude-sanitized-20260430-095501
+     Fallback: real HTML for all unknown routes (NO sinkhole / 204)
+
+==============================================================
+  ✨ CFC12 route table (hit these to confirm this server is live):
+==============================================================
+     http://localhost:8520/cfc-permanent-state  (dashboard)
+     http://localhost:8520/state                (alias)
+     http://localhost:8520/cfc/state            (alias)
+     http://localhost:8520/cfc-debug-log        (ring buffer, CFC_DEBUG=ON)
+     http://localhost:8520/backend_settings     (backend UI)
+     http://localhost:8520/api/options          (live options)
+     http://localhost:8520/api/identity         (identity)
+     http://localhost:8520/api/backends         (backends)
+     Anthropic ⇆ OpenAI translation: ACTIVE for open backends
+         /v1/messages → /v1/chat/completions (body + response + SSE)
+==============================================================
+
+     Worker JS: call _build_worker_script() and paste into CF dashboard
+
+==============================================================
+  DONE -- claude-sanitized-20260430-095501
+==============================================================
+  Claude v1.0.66
+
+  Install:
+  1. Disable cocodem in chrome://extensions/
+  2. Enable Developer Mode
+  3. Load unpacked --> C:\Users\Mustafa\Desktop\7410\nc\claude-sanitized-20260430-095501
+
+  Backend Settings:
+  http://localhost:8520/backend_settings
+
+  Local Server:
+  http://localhost:8520/
+
+  Remote Worker (primary cfcBase in request.js):
+  https://test2.mahnikka.workers.dev/
+  (drop-in cocodem-replacement worker)
+
+  Keep terminal open. Ctrl+C to stop.
+
+[09:55:01] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:01] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:01] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:01] [GET] /api/options?id=fcoeoabgfenejglbffodgkkbkcdhcgfn&v=1.0.66 ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:01] [GET.options] → _build_options_response()
+  [09:55:01] GET /api/options?id=fcoeoabgfenejglbffodgkkbkcdhcgfn&v=1.0.66 HTTP/1.1
+[09:55:02] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:02] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:02] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:08] [GET] /api/options?id=fcoeoabgfenejglbffodgkkbkcdhcgfn&v=1.0.66 ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:08] [GET.options] → _build_options_response()
+  [09:55:08] GET /api/options?id=fcoeoabgfenejglbffodgkkbkcdhcgfn&v=1.0.66 HTTP/1.1
+[09:55:08] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:55:08] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:08] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:21] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:21] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:21] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:22] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:55:22] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:22] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:29] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:55:29] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:29] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:43] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:43] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:43] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:49] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:55:49] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:49] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:52] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:55:52] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:52] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:55:53] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:55:53] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:55:53] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:04] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:56:04] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:04] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:09] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:56:09] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:09] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:21] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:56:21] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:21] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:22] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:56:22] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:22] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:24] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:56:24] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:24] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:30] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:56:30] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:30] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:44] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:56:44] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:44] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:50] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:56:50] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:50] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:51] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:56:51] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:51] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:56:52] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:56:52] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:56:52] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:05] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:57:05] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:05] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:11] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:57:11] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:11] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:20] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:57:20] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:20] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:22] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:57:22] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:22] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:27] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:57:27] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:27] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:31] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:57:31] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:31] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:32] [GET] /api/identity ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:57:32] [GET.identity] apiBaseUrl=http://127.0.0.1:1234/v1
+  [09:57:32] GET /api/identity HTTP/1.1
+[09:57:48] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:57:48] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:48] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:48] [POST] /api/identity body=169B Authorization=<empty> x-api-key=<empty>
+  [09:57:48] POST /api/identity HTTP/1.1
+[09:57:51] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:57:51] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:51] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:52] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:57:52] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:52] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:57:52] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:57:52] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:57:52] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:08] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:58:08] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:08] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:12] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:58:12] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:12] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:21] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:58:21] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:21] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:22] [POST] /api/identity body=170B Authorization=<empty> x-api-key=<empty>
+  [09:58:22] POST /api/identity HTTP/1.1
+[09:58:22] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:58:22] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:22] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:28] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:58:28] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:28] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:32] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:58:32] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:32] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:49] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:58:49] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:49] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:50] [GET] /https://api.anthropic.com/api/oauth/profile ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:58:50] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:50] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:58:52] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:58:52] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:58:52] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:07] [GET] /api/options?id=fcoeoabgfenejglbffodgkkbkcdhcgfn&v=1.0.66 ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' ref=''
+[09:59:07] [GET.options] → _build_options_response()
+  [09:59:07] GET /api/options?id=fcoeoabgfenejglbffodgkkbkcdhcgfn&v=1.0.66 HTTP/1.1
+[09:59:08] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:08] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:08] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:08] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:08] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:08] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:10] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:10] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:10] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:13] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:13] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:13] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:14] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:14] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:14] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:19] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:19] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:19] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:22] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:22] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:22] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:26] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:26] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:26] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:33] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:33] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:33] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:36] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:36] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:36] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:37] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:37] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B
+  [09:59:37] GET /https://api.anthropic.com/api/oauth/profile HTTP/1.1
+[09:59:52] [GET] /https://api.anthropic.com/api/oauth/profile ua='claude-browser-extension/1.0.66 (external) Mozilla/5.0 (Wind' ref=''
+[09:59:52] [GET.auth] path=/https://api.anthropic.com/api/oauth/profile matched=dict size=2308B

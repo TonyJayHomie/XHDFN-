@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-CFC3_fixed.py -- Sanitizer for cocodem's trojanized Claude Chrome extension (1.0.66).
-Run: python CFC3_fixed.py
+CCF2.py -- Sanitizer for cocodem's trojanized Claude Chrome extension (1.0.66).
+Run: python CCF2.py
 
 What cocodem does:
   Ships extension ID fcoeoabgfenejglbffodgkkbkcdhcgfn (Anthropic's real ID) so
@@ -34,7 +34,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 
 EXTENSION_ID         = "fcoeoabgfenejglbffodgkkbkcdhcgfn"
 TIMESTAMP            = datetime.now().strftime("%Y%m%d-%H%M%S")
-COCODEM_SRC          = Path("COCODEMS ORIGINAL ZIP")
+COCODEM_SRC          = Path("COCODEM ORIGINAL ZIP")
 OUTPUT_DIR           = Path(f"claude-sanitized-{TIMESTAMP}")
 CFC_PORT             = 8520
 CFC_BASE             = f"http://localhost:{CFC_PORT}/"
@@ -124,6 +124,30 @@ def _merged_model_alias():
         if isinstance(ma, dict): out.update(ma)
     return out
 
+def _build_ui_nodes():
+    """Return uiNodes that the extension uses to inject nav items and inline links."""
+    return [
+        {
+            "selector": {"type":"div","props":{"className":None,"children":[{"type":"label","props":{"htmlFor":"apiKey"}}]}},
+            "append":   {"type":"p","props":{"className":"mt-2 font-bold text-text-300","children":[{"type":"a","props":{
+                "href": "options.html#backendsettings",
+                "target": "_self",
+                "className": "inline-link",
+                "style": {},
+                "children": ["Backend URL and Model Alias \u2197"]
+            }}]}}
+        },
+        {
+            "selector": {"type":"ul","props":{"className":"flex gap-1 md:flex-col mb-0","children":[{"type":"li","props":{}}]}},
+            "append":   {"type":"li","props":{"children":[{"type":"a","props":{
+                "href": "options.html#backendsettings",
+                "target": "_self",
+                "className": "block w-full text-left whitespace-nowrap transition-all ease-in-out active:scale-95 cursor-pointer font-base rounded-lg px-3 py-3 text-text-200 hover:bg-bg-200 hover:text-text-100",
+                "children": "\u2699\ufe0f Backend Settings"
+            }}]}}
+        },
+    ]
+
 def _build_options_response():
     discard = [
         "cdn.segment.com","api.segment.io","events.statsigapi.net",
@@ -143,6 +167,7 @@ def _build_options_response():
             "email":      IDENTITY.get("email","user@local"),
             "username":   IDENTITY.get("username","local-user"),
             "licenseKey": IDENTITY.get("licenseKey",""),
+            "apiBaseUrl": IDENTITY.get("apiBaseUrl") or DEFAULT_BACKEND_URL,
         },
         "backends":        BACKENDS,
         "apiBaseIncludes": ["https://api.anthropic.com/v1/"],
@@ -165,7 +190,7 @@ def _build_options_response():
         "discardIncludes": discard,
         "modelAlias":      _merged_model_alias(),
         "ui":              {},
-        "uiNodes":         [],
+        "uiNodes":         _build_ui_nodes(),
         "blockAnalytics":  bool(IDENTITY.get("blockAnalytics", True)),
     }
 
@@ -427,7 +452,7 @@ def patch_manifest(m):
                 "; connect-src 'self' http://localhost:* http://127.0.0.1:* http://*:* wss://bridge.claudeusercontent.com")
         csp["extension_pages"]=policy; m["content_security_policy"]=csp
         changes.append("PATCHED CSP connect-src")
-    m["externally_connectable"]={"matches":["http://localhost/*","http://127.0.0.1/*"]}
+    m["externally_connectable"]={"matches":["http://localhost/*","http://127.0.0.1/*",REMOTE_BASE+"*"]}
     changes.append("NARROWED externally_connectable to localhost only")
     _ATTACKER=("111724.xyz","aroic","localhost:8787")
     _LOCAL=["http://localhost/*","http://127.0.0.1/*"]
@@ -1001,11 +1026,24 @@ if (globalThis.window) {
       link.style.color="Saddle Brown"; link.style.fontWeight="600"
       logoutEl.parentElement.insertBefore(link, logoutEl)
       const handleHash = () => {
-        if (location.hash === "#backendsettings") {
-          const main = document.querySelector("main") || document.body
-          main.innerHTML = '<div id="__cfc_settings_container"></div>'
+        const hash = location.hash
+        const main = document.querySelector("main") || document.body
+        const uiHashes = {
+          "#backendsettings": "/assets/backend_settings_ui.js",
+          "#api":             "/assets/api_ui.js",
+          "#apikey":          "/assets/api_ui.js",
+          "#model":           "/assets/model_ui.js",
+          "#tasks":           "/assets/tasks_ui.js",
+          "#scheduledtasks":  "/assets/tasks_ui.js",
+        }
+        const assetUrl = uiHashes[hash]
+        if (assetUrl) {
+          main.innerHTML = '<div id="__cfc_ui_container"></div>'
+          const prev = document.getElementById("__cfc_ui_script")
+          if (prev) prev.remove()
           const script = document.createElement("script")
-          script.src = "/assets/backend_settings_ui.js"
+          script.id  = "__cfc_ui_script"
+          script.src = assetUrl + "?v=" + Date.now()
           document.body.appendChild(script)
         }
       }
@@ -1282,6 +1320,115 @@ def write_backend_settings_ui():
     (OUTPUT_DIR/"assets"/"backend_settings_ui.js").write_text(ui, encoding="utf-8")
     print(f"[OK] assets/backend_settings_ui.js ({len(ui)} bytes)")
 
+
+def write_api_ui():
+    """Write assets/api_ui.js -- API config + system prompt editor."""
+    dest = OUTPUT_DIR / "assets" / "api_ui.js"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    local = CFC_BASE
+    lines = [
+        "(function(){",
+        f"  const LOCAL = '{CFC_BASE}';",
+        "  const slot = document.querySelector('main') || document.body;",
+        "  const div = document.createElement('div');",
+        "  div.id = 'cfc-api-ui';",
+        "  div.style.cssText = 'max-width:560px;margin:40px auto;font-family:sans-serif;padding:20px';",
+        "  div.innerHTML = '<h2>API Configuration (internal)</h2>'",
+        "    + '<p style=\"color:#27ae60\">All data stored locally. No cocodem calls.</p>'",
+        "    + '<label>BACKEND URL</label>'",
+        "    + '<input id=\"apiCfgUrl\" type=\"text\" style=\"display:block;width:100%;padding:8px;margin:6px 0 16px;border:1px solid #ccc;border-radius:6px\" placeholder=\"http://10.0.0.221:1234/v1\"/>'",
+        "    + '<label>SYSTEM PROMPT</label>'",
+        "    + '<textarea id=\"apiCfgPrompt\" rows=\"6\" style=\"display:block;width:100%;padding:8px;margin:6px 0 16px;border:1px solid #ccc;border-radius:6px;resize:vertical\" placeholder=\"You are a helpful assistant.\"></textarea>'",
+        "    + '<button id=\"apiCfgSave\" style=\"background:#c96442;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer\">Save</button>'",
+        "    + '<div id=\"apiCfgStatus\" style=\"margin-top:12px\"></div>';",
+        "  slot.innerHTML = ''; slot.appendChild(div);",
+        "  chrome.storage.local.get(['cfc_system_prompt'], d => {",
+        "    if(d.cfc_system_prompt) document.getElementById('apiCfgPrompt').value = d.cfc_system_prompt;",
+        "  });",
+        f"  fetch('{CFC_BASE}api/identity').then(r=>r.json()).then(cfg=>{{",
+        "    if(cfg.apiBaseUrl) document.getElementById('apiCfgUrl').value = cfg.apiBaseUrl;",
+        "  }}).catch(()=>{});",
+        "  document.getElementById('apiCfgSave').onclick = async () => {",
+        "    const url = document.getElementById('apiCfgUrl').value.trim();",
+        "    const prompt = document.getElementById('apiCfgPrompt').value;",
+        "    chrome.storage.local.set({cfc_system_prompt: prompt});",
+        f"    const r = await fetch('{CFC_BASE}api/identity', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{apiBaseUrl: url}})}});",
+        "    const j = await r.json();",
+        "    document.getElementById('apiCfgStatus').textContent = j.ok ? 'Saved!' : 'Error: ' + JSON.stringify(j);",
+        "  };",
+        "})();",
+    ]
+    dest.write_text("\n".join(lines), encoding="utf-8")
+    print(f"  [OK] {dest}")
+
+
+def write_model_ui():
+    """Write assets/model_ui.js -- model picker + system prompt editor."""
+    dest = OUTPUT_DIR / "assets" / "model_ui.js"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "(function(){",
+        f"  const LOCAL = '{CFC_BASE}';",
+        "  const slot = document.querySelector('main') || document.body;",
+        "  const div = document.createElement('div');",
+        "  div.id = 'cfc-model-ui';",
+        "  div.style.cssText = 'max-width:560px;margin:40px auto;font-family:sans-serif;padding:20px';",
+        "  div.innerHTML = '<h2>Model &amp; Prompt Configuration</h2>'",
+        "    + '<label>ACTIVE MODEL</label>'",
+        "    + '<select id=\"modelSelect\" style=\"display:block;width:100%;padding:8px;margin:6px 0 16px;border:1px solid #ccc;border-radius:6px\"><option>Loading models...</option></select>'",
+        "    + '<label>SYSTEM PROMPT</label>'",
+        "    + '<textarea id=\"modelPrompt\" rows=\"8\" style=\"display:block;width:100%;padding:8px;margin:6px 0 16px;border:1px solid #ccc;border-radius:6px;resize:vertical\" placeholder=\"You are a helpful assistant.\"></textarea>'",
+        "    + '<button id=\"modelSave\" style=\"background:#c96442;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer\">Save</button>'",
+        "    + '<div id=\"modelStatus\" style=\"margin-top:12px\"></div>';",
+        "  slot.innerHTML = ''; slot.appendChild(div);",
+        "  chrome.storage.local.get(['cfc_system_prompt','cfc_active_model'], d => {",
+        "    if(d.cfc_system_prompt) document.getElementById('modelPrompt').value = d.cfc_system_prompt;",
+        "    if(d.cfc_active_model) window._savedModel = d.cfc_active_model;",
+        "  });",
+        f"  fetch('{CFC_BASE}api/identity').then(r=>r.json()).then(cfg => {{",
+        "    const base = (cfg.apiBaseUrl || 'http://localhost:1234/v1').replace(/\/v1$/, '');",
+        "    return fetch(base + '/v1/models');",
+        "  }}).then(r=>r.json()).then(data => {",
+        "    const models = data.data || data.models || [];",
+        "    const sel = document.getElementById('modelSelect');",
+        "    sel.innerHTML = models.map(m => {",
+        "      const id = typeof m === 'string' ? m : m.id;",
+        "      return '<option value=\"'+ id + '\"'+( window._savedModel===id?' selected':'')+'>'+id+'</option>';",
+        "    }).join('');",
+        "  }).catch(e => { document.getElementById('modelStatus').textContent = 'Could not load models: ' + e.message; });",
+        "  document.getElementById('modelSave').onclick = () => {",
+        "    const model = document.getElementById('modelSelect').value;",
+        "    const prompt = document.getElementById('modelPrompt').value;",
+        "    chrome.storage.local.set({cfc_system_prompt: prompt, cfc_active_model: model});",
+        "    document.getElementById('modelStatus').textContent = 'Saved! Model: ' + model;",
+        "  };",
+        "})();",
+    ]
+    dest.write_text("\n".join(lines), encoding="utf-8")
+    print(f"  [OK] {dest}")
+
+
+def write_tasks_ui():
+    """Write assets/tasks_ui.js -- scheduled tasks placeholder."""
+    dest = OUTPUT_DIR / "assets" / "tasks_ui.js"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "(function(){",
+        "  const slot = document.querySelector('main') || document.body;",
+        "  const div = document.createElement('div');",
+        "  div.id = 'cfc-tasks-ui';",
+        "  div.style.cssText = 'max-width:560px;margin:40px auto;font-family:sans-serif;padding:20px';",
+        "  div.innerHTML = '<h2>Scheduled Tasks</h2><p style=\"color:#888\">No tasks configured.</p>'",
+        "    + '<button id=\"tasksAdd\" style=\"margin-top:16px;background:#c96442;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer\">+ Add Task</button>'",
+        "    + '<div id=\"tasksStatus\" style=\"margin-top:12px\"></div>';",
+        "  slot.innerHTML = ''; slot.appendChild(div);",
+        "  document.getElementById('tasksAdd').onclick = () => {",
+        "    document.getElementById('tasksStatus').textContent = 'Task scheduling coming soon.';",
+        "  };",
+        "})();",
+    ]
+    dest.write_text("\n".join(lines), encoding="utf-8")
+    print(f"  [OK] {dest}")
 
 def write_arc_html():
     h = """<!doctype html>
@@ -1915,6 +2062,9 @@ def main():
     m=patch_manifest(m)
     write_sanitized_request_js()
     write_backend_settings_ui()
+    write_api_ui()
+    write_model_ui()
+    write_tasks_ui()
     write_options()
     write_arc_html()
     inject_index_module()
